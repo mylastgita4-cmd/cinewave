@@ -22,4 +22,7 @@ ALLOWED_ORIGINS = ""
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = ""kv_namespaces": [{
+                    "binding": "KV_BINDING",
+                    "id": "1df33e9670cf4f469813aa66d8112920"
+                 }]"
