@@ -1,0 +1,174 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CineWave | Movie Catalog</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #101014;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      padding: 22px 6%;
+      background: #19191f;
+      border-bottom: 1px solid #303039;
+    }
+
+    header h1 {
+      margin: 0;
+      color: #ff365e;
+      font-size: 30px;
+    }
+
+    header p { color: #aaa; margin-bottom: 0; }
+
+    .hero {
+      padding: 45px 6% 30px;
+      background: linear-gradient(120deg, #301020, #151522, #101014);
+    }
+
+    .hero h2 { font-size: 30px; margin: 0 0 12px; }
+
+    .hero p { color: #c4c4cc; }
+
+    input {
+      width: 100%;
+      max-width: 500px;
+      padding: 14px;
+      margin-top: 12px;
+      background: #24242c;
+      color: white;
+      border: 1px solid #454550;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    main { padding: 25px 6%; }
+
+    .movies {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 18px;
+    }
+
+    .movie {
+      background: #1c1c24;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #303039;
+    }
+
+    .poster {
+      height: 190px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 12px;
+      font-size: 23px;
+      font-weight: bold;
+      background: linear-gradient(145deg, #642444, #22223b);
+    }
+
+    .movie:nth-child(even) .poster {
+      background: linear-gradient(145deg, #174c55, #282044);
+    }
+
+    .info { padding: 12px; }
+
+    .info h3 { font-size: 16px; margin: 0 0 8px; }
+
+    .info p { color: #aaa; font-size: 13px; }
+
+    .tag { color: #ff718b; font-size: 12px; }
+
+    footer {
+      text-align: center;
+      padding: 25px;
+      color: #999;
+      border-top: 1px solid #303039;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CineWave 🎬</h1>
+    <p>Your world of movies</p>
+  </header>
+
+  <section class="hero">
+    <h2>Discover Your Next Movie</h2>
+    <p>Explore films, discover stories and find your next favourite.</p>
+    <input id="search" type="search"
+      placeholder="Search movies..."
+      aria-label="Search movies">
+  </section>
+
+  <main>
+    <h2>Featured Films</h2>
+    <p id="count">3 films</p>
+
+    <div class="movies" id="movies">
+      <article class="movie" data-title="big buck bunny">
+        <div class="poster">BIG BUCK<br>BUNNY</div>
+        <div class="info">
+          <h3>Big Buck Bunny</h3>
+          <p>2008 · Animation</p>
+          <span class="tag">Open movie project</span>
+        </div>
+      </article>
+
+      <article class="movie" data-title="sintel">
+        <div class="poster">SINTEL</div>
+        <div class="info">
+          <h3>Sintel</h3>
+          <p>2010 · Fantasy</p>
+          <span class="tag">Open movie project</span>
+        </div>
+      </article>
+
+      <article class="movie" data-title="tears of steel">
+        <div class="poster">TEARS OF STEEL</div>
+        <div class="info">
+          <h3>Tears of Steel</h3>
+          <p>2012 · Sci-Fi</p>
+          <span class="tag">Open movie project</span>
+        </div>
+      </article>
+    </div>
+
+    <p id="empty" hidden>No matching films found.</p>
+  </main>
+
+  <footer>
+    CineWave © 2026 · Movie Discovery Catalog
+  </footer>
+
+  <script>
+    const search = document.getElementById("search");
+    const cards = [...document.querySelectorAll(".movie")];
+    const count = document.getElementById("count");
+    const empty = document.getElementById("empty");
+
+    search.addEventListener("input", () => {
+      const query = search.value.toLowerCase().trim();
+      let visible = 0;
+
+      cards.forEach(card => {
+        const match = card.dataset.title.includes(query);
+        card.hidden = !match;
+        if (match) visible++;
+      });
+
+      count.textContent = visible + " films";
+      empty.hidden = visible !== 0;
+    });
+  </script>
+</body>
+</html>
