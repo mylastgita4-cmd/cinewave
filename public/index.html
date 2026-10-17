@@ -1,198 +1,516 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CineWave - Free Movies</title>
+<meta name="theme-color" content="#090d16">
+<title>CineWave - Movie Discovery</title>
 <style>
+:root{color-scheme:dark;--bg:#090d16;--panel:#141c2b;--line:#29364b;--muted:#aab4c5;--teal:#5eead4}
 *{box-sizing:border-box}
-body{margin:0;background:#090d16;color:white;font-family:Arial,sans-serif}
-header{padding:22px 16px;background:#111827;border-bottom:1px solid #263044}
-.logo{font-size:29px;font-weight:900;color:#5eead4}
-.logo span{color:white}
-header p,.info p{color:#aab4c5;font-size:13px}
-main{max-width:1100px;margin:auto;padding:20px 15px}
-.search{width:100%;padding:14px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:12px 0 24px}
+body{margin:0;background:var(--bg);color:#fff;font-family:Arial,sans-serif}
+header{padding:22px 16px;background:#111827;border-bottom:1px solid var(--line)}
+.logo{font-size:29px;font-weight:900;color:var(--teal)}
+.logo span{color:#fff}
+header p,.muted,.note{color:var(--muted);font-size:13px;line-height:1.6}
+main{max-width:1150px;margin:auto;padding:20px 15px}
+input{width:100%;padding:14px;border:1px solid #344158;border-radius:10px;background:#151e2e;color:white;font-size:16px}
+.section{margin:25px 0}
 .sectionTitle{font-size:20px;margin:10px 0 14px}
-.movies{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:16px}
-.card{background:#141c2b;border:1px solid #273248;border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s}
-.card:hover{transform:translateY(-3px)}
-.poster{height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:12px;font-size:24px;font-weight:bold;background:#1a2336}
+.movies{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:15px}
+.card{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer}
+.card:hover{border-color:var(--teal)}
+.poster{height:215px;background:#1a2336;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);text-align:center;padding:8px}
 .poster img{width:100%;height:100%;object-fit:cover}
-.info{padding:12px}
-.info h3{font-size:16px}
-.info p{font-size:12px;line-height:1.5}
-.overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.btn{width:100%;display:block;text-align:center;text-decoration:none;border:0;border-radius:8px;padding:11px 5px;margin-top:8px;font-size:13px;font-weight:bold;cursor:pointer}
-.watch{background:#14b8a6;color:#071713}
-.download{border:1px solid #526078;color:white;background:transparent}
-.note,footer{color:#9eabc0;font-size:12px;line-height:1.7}
-footer{text-align:center;padding:25px;border-top:1px solid #273248}
-.status{text-align:center;color:#aab4c5;padding:20px}
-.status.error{color:#f87171}
-.pagination{display:flex;justify-content:center;gap:8px;padding:12px 0 22px}
-.pagination button{padding:8px 14px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
-.pagination button.current{background:#14b8a6;color:#071713;border-color:#14b8a6}
-.pagination button:disabled{opacity:.4;cursor:default}
-#detailBox,#torrentBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}
-.detailContent,.torrentContent{max-width:600px;margin:40px auto;background:#141c2b;padding:15px;border-radius:12px}
-.torrentItem{border:1px solid #273248;border-radius:10px;padding:12px;margin-bottom:10px}
-.torrentItem .t-title{font-size:13px;word-break:break-all}
-.torrentItem .t-meta{color:#9eabc0;font-size:11px;margin:6px 0;display:flex;flex-wrap:wrap;gap:10px}
-.badge{background:#1a2336;border-radius:4px;padding:2px 7px;font-size:11px;color:#5eead4}
-.src{color:#9eabc0;font-size:10px}
-#playerBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}
-.playerContent{max-width:900px;margin:25px auto;background:#141c2b;padding:15px;border-radius:12px}
-#moviePlayer{width:100%;max-height:70vh;background:black}
-.close{float:right;background:#14b8a6;border:0;border-radius:6px;padding:10px;cursor:pointer}
-@media(max-width:600px){.movies{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}}
+.info{padding:11px}
+.info h3{font-size:14px;line-height:1.4;margin:0 0 7px;overflow-wrap:anywhere}
+.info p{font-size:12px;color:var(--muted);line-height:1.5;margin:5px 0}
+.btn{display:inline-block;padding:10px 12px;border:0;border-radius:8px;background:var(--teal);color:#071713;font-weight:bold;text-align:center;text-decoration:none;cursor:pointer;font-size:13px}
+.btn.secondary{background:transparent;border:1px solid #526078;color:white}
+.btn:disabled{opacity:.5;cursor:default}
+.actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.status{text-align:center;color:var(--muted);padding:18px;line-height:1.6}
+.status.error{color:#fca5a5}
+.pagination{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;padding:15px}
+.badge{display:inline-block;background:#1a2336;color:var(--teal);padding:3px 7px;border-radius:5px;font-size:11px}
+.note{margin:25px 0}
+footer{text-align:center;padding:25px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.modal{display:none;position:fixed;inset:0;background:#000d;z-index:10;overflow:auto;padding:15px}
+.modal.open{display:block}
+.modalContent{max-width:680px;margin:25px auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.modalHead{display:flex;justify-content:space-between;align-items:start;gap:12px}
+.modalHead h2{font-size:21px;margin:5px 0 15px}
+.close{background:transparent;color:white;border:1px solid #526078;border-radius:7px;padding:8px;cursor:pointer}
+.torrentItem{border:1px solid var(--line);border-radius:9px;padding:12px;margin:10px 0}
+.torrentItem h4{font-size:13px;overflow-wrap:anywhere;margin:0 0 8px}
+.hidden{display:none!important}
+@media(max-width:450px){.movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.poster{height:195px}main{padding:15px 10px}}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">Cine<span>Wave</span> 🎬</div>
-  <p>Discover movies. Watch freely. Enjoy cinema.</p>
+  <p>Discover movies, explore details and find official sources.</p>
 </header>
-<main>
-  <input id="search" class="search" placeholder="🔍 Search movies..." oninput="onSearchInput()">
 
-  <div id="searchSection" style="display:none">
+<main>
+  <input id="search" type="search" placeholder="🔍 Search movies..." autocomplete="off" aria-label="Search movies">
+
+  <section id="searchSection" class="section hidden">
     <h2 class="sectionTitle">🔍 Search Results</h2>
     <div id="movieGrid" class="movies"></div>
-    <div id="status" class="status"></div>
-    <nav id="pagination" class="pagination"></nav>
-  </div>
+    <div id="status" class="status" aria-live="polite"></div>
+    <nav id="pagination" class="pagination" aria-label="Search pages"></nav>
+  </section>
 
-  <div id="latestSection">
-    <h2 class="sectionTitle">🆕 Latest Movies <span style="font-size:11px;color:#9eabc0">recently added on YTS</span></h2>
+  <section id="latestSection" class="section">
+    <h2 class="sectionTitle">🆕 Latest Movies <span class="muted">recently added on YTS</span></h2>
     <div id="latestGrid" class="movies"></div>
-    <div id="latestStatus" class="status">Loading latest movies…</div>
-    <div class="pagination"><button id="latestRefresh" type="button">↻ Refresh</button></div>
-  </div>
+    <div id="latestStatus" class="status" aria-live="polite">Loading latest movies…</div>
+    <div class="pagination"><button id="latestRefresh" class="btn secondary" type="button">↻ Refresh</button></div>
+  </section>
 
-  <p class="note">CineWave is an independent movie catalog. Films are linked to their official sources. Please check each film's license before redistribution.</p>
+  <p class="note">CineWave is a movie discovery catalog. Availability, ratings and release dates depend on the data provider. Always use legal viewing sources.</p>
 </main>
 
-<!-- Movie detail modal -->
-<div id="detailBox">
-  <div class="detailContent">
-    <button class="close" onclick="closeDetail()">✕ Close</button>
-    <h3 id="detailTitle" style="margin:0 40px 12px 0"></h3>
+<div id="detailBox" class="modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="modalContent">
+    <div class="modalHead">
+      <h2 id="detailTitle"></h2>
+      <button class="close" data-close="detailBox">✕ Close</button>
+    </div>
     <div id="detailBody"></div>
-    <button class="btn watch" id="detailTorrentsBtn" type="button">⬇ Show Torrents</button>
+    <div class="actions" id="detailActions"></div>
+    <div id="torrentArea" class="hidden">
+      <h3>Available sources</h3>
+      <div id="torrentList"></div>
+    </div>
   </div>
 </div>
 
-<!-- Torrent results modal -->
-<div id="torrentBox">
-  <div class="torrentContent">
-    <button class="close" onclick="closeTorrents()">✕ Close</button>
-    <h3 id="torrentTitle" style="margin:0 40px 12px 0">Available Torrents</h3>
-    <div id="torrentList"></div>
-  </div>
-</div>
-
-<!-- Player modal (preserved) -->
-<div id="playerBox">
-  <div class="playerContent">
-    <button class="close" onclick="closeMovie()">✕ Close</button>
-    <h3 id="playerTitle">CineWave Player</h3>
-    <video id="moviePlayer" controls playsinline preload="metadata">
-      Your browser does not support video playback.
-    </video>
-    <p class="note">Video playback requires an internet connection.</p>
-  </div>
-</div>
-
-<footer>© CineWave · Free Movie Discovery</footer>
+<footer>© CineWave · Movie Discovery</footer>
 
 <script>
-const grid=document.getElementById('movieGrid'),statusEl=document.getElementById('status'),pagEl=document.getElementById('pagination');
-const latestGrid=document.getElementById('latestGrid'),latestStatus=document.getElementById('latestStatus');
-const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/></svg>');
-let debounceTimer=null,currentQuery='',currentPage=1,totalPages=1,currentMovie=null;
+'use strict';
 
-/* ============ Data layer: browser-direct first, Worker proxy as fallback ============
-   Reason: Apple's iTunes Search API and yts.mx reject datacenter IPs (like Cloudflare
-   Workers egress) with 403. Calls from the visitor's own device use a normal
-   consumer IP and succeed without any API key. */
+const $ = id => document.getElementById(id);
+const searchInput = $('search');
+const grid = $('movieGrid');
+const statusEl = $('status');
+const pagination = $('pagination');
+const latestGrid = $('latestGrid');
+const latestStatus = $('latestStatus');
 
-async function fetchJSON(url){
-  const res=await fetch(url,{headers:{'Accept':'application/json'}});
-  if(!res.ok)throw new Error('HTTP '+res.status);
-  const text=await res.text();
-  try{return JSON.parse(text)}
-  catch(e){throw new Error('Invalid response from provider')}
+let debounceTimer;
+let currentQuery = '';
+let currentPage = 1;
+let totalPages = 1;
+let selectedMovie = null;
+let searchRequest = 0;
+let latestRequest = 0;
+
+const PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#aab4c5" font-size="22" text-anchor="middle">No Poster</text></svg>'
+);
+
+function withTimeout(url, ms = 10000) {
+  return fetch(url, {
+    signal: AbortSignal.timeout(ms),
+    headers: { Accept: 'application/json' }
+  }).then(async response => {
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new Error('The server returned a webpage instead of JSON. Check Worker routing and deployment.');
+    }
+    if (!response.ok) {
+      throw new Error(body.error || ('HTTP ' + response.status));
+    }
+    return body;
+  });
 }
 
-// iTunes Search API (keyless). Fetched from the visitor's device.
-async function searchMoviesDirect(q){
-  const data=await fetchJSON('https://itunes.apple.com/search?term='+encodeURIComponent(q)
-    +'&media=movie&entity=movie&limit=200&country=US');
-  return normalizeItunes(data.results||[]);
-}
-
-// YTS API (keyless, documented at yts.mx/api) — latest movies, sorted by date added.
-async function latestMoviesDirect(){
-  const data=await fetchJSON('https://yts.mx/api/v2/list_movies.json?limit=20&sort_by=date_added&order_by=desc');
-  return normalizeYts((data&&data.data&&data.data.movies)||[]);
-}
-
-async function searchMoviesViaWorker(q,page){
-  const res=await fetch('/api/movies?'+new URLSearchParams({q:q,page:String(page)}));
-  let body=null;try{body=await res.json()}catch(e){}
-  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
-  return body;
-}
-
-async function latestViaWorker(){
-  const res=await fetch('/api/latest');
-  let body=null;try{body=await res.json()}catch(e){}
-  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
-  return body.results||[];
-}
-
-// Normalize both sources into one card shape
-function normalizeItunes(list){
-  return list.map(m=>({
-    id:m.trackId!=null?String(m.trackId):m.trackName,
-    title:m.trackName,
-    year:(m.releaseDate||'').slice(0,4),
-    overview:m.longDescription||m.shortDescription||'',
-    genres:m.primaryGenreName?[m.primaryGenreName]:[],
-    poster:m.artworkUrl100?m.artworkUrl100.replace('/100x100bb.jpg','/600x600bb.jpg'):null,
-    trailerUrl:m.previewUrl||null,
-    storeUrl:m.trackViewUrl||null,
-    artist:m.artistName||null,
-    source:'iTunes',
-  }));
-}
-function normalizeYts(list){
-  return list.map(m=>({
-    id:m.imdb_code||String(m.id),
-    title:m.title,
-    year:m.year?String(m.year):'',
-    overview:m.synopsis||m.description_full||'',
-    genres:m.genres||[],
-    poster:m.medium_cover_image||null,
-    rating:m.rating,
-    trailerUrl:null,
-    storeUrl:null,
-    artist:null,
-    source:'YTS',
-    _ytsTitle:m.title,_ytsYear:m.year,
+function normalizeItunes(list) {
+  return list.map(m => ({
+    id: String(m.trackId || m.trackName || Math.random()),
+    title: m.trackName || 'Untitled',
+    year: (m.releaseDate || '').slice(0, 4),
+    overview: m.longDescription || m.shortDescription || '',
+    genres: m.primaryGenreName ? [m.primaryGenreName] : [],
+    poster: m.artworkUrl100
+      ? m.artworkUrl100.replace(/\/\d+x\d+bb\./, '/600x600bb.')
+      : null,
+    rating: null,
+    trailerUrl: m.previewUrl || null,
+    storeUrl: m.trackViewUrl || null,
+    source: 'iTunes'
   }));
 }
 
-/* ============ Search flow ============ */
-function onSearchInput(){
-  clearTimeout(debounceTimer);
-  debounceTimer=setTimeout(function(){
-    currentQuery=document.getElementById('search').value.trim();
-    currentPage=1;
-    if(currentQuery){
-      document.getElementById('searchSection').style.display='block';
+function normalizeYts(list) {
+  return list.map(m => ({
+    id: String(m.imdb_code || m.id || m.title),
+    title: m.title || 'Untitled',
+    year: m.year ? String(m.year) : '',
+    overview: m.synopsis || m.description_full || '',
+    genres: Array.isArray(m.genres) ? m.genres : [],
+    poster: m.medium_cover_image || m.large_cover_image || null,
+    rating: m.rating || null,
+    trailerUrl: m.yt_trailer_code
+      ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(m.yt_trailer_code)
+      : null,
+    storeUrl: null,
+    source: 'YTS',
+    _ytsTitle: m.title,
+    _ytsYear: m.year
+  }));
+}
+
+async function searchMoviesDirect(q) {
+  const url = 'https://itunes.apple.com/search?' + new URLSearchParams({
+    term: q, media: 'movie', entity: 'movie', limit: '50', country: 'US'
+  });
+  const data = await withTimeout(url);
+  return normalizeItunes(data.results || []);
+}
+
+async function searchMoviesViaWorker(q, page) {
+  return withTimeout('/api/movies?' + new URLSearchParams({
+    q, page: String(page)
+  }));
+}
+
+async function latestMoviesDirect() {
+  const url = 'https://yts.mx/api/v2/list_movies.json?' + new URLSearchParams({
+    limit: '20', sort_by: 'date_added', order_by: 'desc'
+  });
+  const data = await withTimeout(url);
+  if (data.status && data.status !== 'ok') {
+    throw new Error(data.status_message || 'YTS could not provide movie data.');
+  }
+  return normalizeYts(data?.data?.movies || []);
+}
+
+async function latestViaWorker() {
+  const data = await withTimeout('/api/latest');
+  if (!Array.isArray(data.results)) {
+    throw new Error('The Worker response does not contain a results list.');
+  }
+  return data.results;
+}
+
+function safeText(value) {
+  return String(value == null ? '' : value);
+}
+
+function addText(parent, tag, value, className) {
+  const el = document.createElement(tag);
+  el.textContent = safeText(value);
+  if (className) el.className = className;
+  parent.appendChild(el);
+  return el;
+}
+
+function makeLink(label, url, className = 'btn') {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url, location.href);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return null;
+    const a = document.createElement('a');
+    a.className = className;
+    a.textContent = label;
+    a.href = parsed.href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    return a;
+  } catch {
+    return null;
+  }
+}
+
+function renderMovies(target, movies) {
+  target.replaceChildren();
+
+  if (!movies.length) {
+    addText(target, 'p', 'No movies found.');
+    return;
+  }
+
+  movies.forEach(movie => {
+    const card = document.createElement('article');
+    card.className = 'card';
+
+    const poster = document.createElement('div');
+    poster.className = 'poster';
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.alt = movie.title + ' poster';
+    img.src = movie.poster || PLACEHOLDER;
+    img.onerror = () => { img.onerror = null; img.src = PLACEHOLDER; };
+    poster.appendChild(img);
+
+    const info = document.createElement('div');
+    info.className = 'info';
+    addText(info, 'h3', movie.title);
+
+    const meta = [movie.year, movie.rating ? '★ ' + movie.rating : '', movie.source]
+      .filter(Boolean).join(' · ');
+    addText(info, 'p', meta || 'Movie');
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const details = document.createElement('button');
+    details.className = 'btn';
+    details.type = 'button';
+    details.textContent = 'Details';
+    details.addEventListener('click', () => openDetails(movie));
+    actions.appendChild(details);
+
+    card.append(poster, info, actions);
+    target.appendChild(card);
+  });
+}
+
+function showStatus(el, message, error = false) {
+  el.textContent = message;
+  el.classList.toggle('error', error);
+}
+
+async function loadLatest() {
+  const requestId = ++latestRequest;
+  latestGrid.replaceChildren();
+  showStatus(latestStatus, 'Loading latest movies…');
+
+  let movies = [];
+  let directError = null;
+
+  try {
+    movies = await latestMoviesDirect();
+    if (requestId !== latestRequest) return;
+    if (!movies.length) throw new Error('YTS returned no movies.');
+    renderMovies(latestGrid, movies);
+    showStatus(latestStatus, 'Showing ' + movies.length + ' movies · via YTS');
+    return;
+  } catch (error) {
+    directError = error;
+  }
+
+  if (requestId !== latestRequest) return;
+
+  try {
+    movies = await latestViaWorker();
+    if (requestId !== latestRequest) return;
+    if (!movies.length) throw new Error('The Worker returned an empty movie list.');
+    renderMovies(latestGrid, movies);
+    showStatus(latestStatus, 'Showing ' + movies.length + ' movies · via Worker');
+  } catch (workerError) {
+    if (requestId !== latestRequest) return;
+    showStatus(
+      latestStatus,
+      'Could not load movies. YTS: ' + directError.message +
+      ' | Worker: ' + workerError.message,
+      true
+    );
+  }
+}
+
+async function loadMovies() {
+  const requestId = ++searchRequest;
+  grid.replaceChildren();
+  pagination.replaceChildren();
+  showStatus(statusEl, 'Searching…');
+
+  try {
+    let movies = [];
+    let pages = 1;
+    let source = '';
+
+    try {
+      movies = await searchMoviesDirect(currentQuery);
+      source = 'iTunes';
+      pages = 1;
+    } catch (directError) {
+      const data = await searchMoviesViaWorker(currentQuery, currentPage);
+      movies = data.results || [];
+      pages = Math.max(1, Number(data.totalPages) || 1);
+      source = data.source || 'Worker';
+    }
+
+    if (requestId !== searchRequest) return;
+
+    totalPages = pages;
+    renderMovies(grid, movies);
+    showStatus(statusEl, movies.length
+      ? 'Found ' + (movies.length) + ' results · via ' + source
+      : 'No results found. Try another title.');
+    renderPagination();
+  } catch (error) {
+    if (requestId !== searchRequest) return;
+    showStatus(statusEl, 'Search failed: ' + error.message, true);
+  }
+}
+
+function renderPagination() {
+  pagination.replaceChildren();
+  if (totalPages <= 1) return;
+
+  const previous = document.createElement('button');
+  previous.className = 'btn secondary';
+  previous.textContent = '← Previous';
+  previous.disabled = currentPage <= 1;
+  previous.onclick = () => {
+    if (currentPage > 1) {
+      currentPage--;
       loadMovies();
-    }else{
-      document.getElementById('searchSection').style.display='none';
-      grid.innerHTML='';statusEl.textContent='';pagEl.innerHTML
+    }
+  };
+
+  const label = document.createElement('span');
+  label.className = 'muted';
+  label.textContent = 'Page ' + currentPage + ' of ' + totalPages;
+
+  const next = document.createElement('button');
+  next.className = 'btn secondary';
+  next.textContent = 'Next →';
+  next.disabled = currentPage >= totalPages;
+  next.onclick = () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      loadMovies();
+    }
+  };
+
+  pagination.append(previous, label, next);
+}
+
+function onSearchInput() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    currentQuery = searchInput.value.trim();
+    currentPage = 1;
+
+    if (!currentQuery) {
+      $('searchSection').classList.add('hidden');
+      grid.replaceChildren();
+      statusEl.textContent = '';
+      pagination.replaceChildren();
+      searchRequest++;
+      return;
+    }
+
+    $('searchSection').classList.remove('hidden');
+    loadMovies();
+  }, 400);
+}
+
+function openDetails(movie) {
+  selectedMovie = movie;
+  $('detailTitle').textContent = movie.title + (movie.year ? ' (' + movie.year + ')' : '');
+
+  const body = $('detailBody');
+  body.replaceChildren();
+
+  addText(body, 'p', movie.overview || 'No description available.');
+  if (movie.genres?.length) addText(body, 'p', 'Genres: ' + movie.genres.join(', '));
+  if (movie.rating) addText(body, 'p', 'Rating: ' + movie.rating);
+  addText(body, 'p', 'Catalog source: ' + (movie.source || 'Unknown'), 'muted');
+
+  const actions = $('detailActions');
+  actions.replaceChildren();
+
+  const store = makeLink('Official Store', movie.storeUrl);
+  if (store) actions.appendChild(store);
+
+  const trailer = makeLink('Watch Trailer / Preview', movie.trailerUrl);
+  if (trailer) actions.appendChild(trailer);
+
+  if (movie.source === 'YTS' || movie._ytsTitle) {
+    const torrents = document.createElement('button');
+    torrents.className = 'btn secondary';
+    torrents.type = 'button';
+    torrents.textContent = 'Search Available Sources';
+    torrents.onclick = () => searchSources(movie);
+    actions.appendChild(torrents);
+  }
+
+  $('torrentArea').classList.add('hidden');
+  $('detailBox').classList.add('open');
+}
+
+async function searchSources(movie) {
+  const area = $('torrentArea');
+  const list = $('torrentList');
+  area.classList.remove('hidden');
+  list.replaceChildren();
+  showStatusIn(list, 'Checking available sources…');
+
+  try {
+    const q = movie._ytsTitle || movie.title;
+    const data = await withTimeout('/api/torrents?' + new URLSearchParams({
+      q,
+      year: movie._ytsYear || movie.year || ''
+    }));
+    list.replaceChildren();
+
+    const items = data.torrents || [];
+    if (!items.length) {
+      addText(list, 'p', 'No sources returned. Try again later.');
+      return;
+    }
+
+    items.slice(0, 10).forEach(item => {
+      const box = document.createElement('div');
+      box.className = 'torrentItem';
+      addText(box, 'h4', item.title || 'Source');
+      addText(box, 'p', [
+        item.quality || '',
+        item.size || '',
+        item.seeds != null ? 'Seeds: ' + item.seeds : ''
+      ].filter(Boolean).join(' · '), 'muted');
+
+      const sourceUrl = item.url || item.pageUrl;
+      const link = makeLink('Open source page', sourceUrl, 'btn secondary');
+      if (link) box.appendChild(link);
+      list.appendChild(box);
+    });
+  } catch (error) {
+    list.replaceChildren();
+    addText(list, 'p', 'Sources unavailable: ' + error.message, 'status error');
+  }
+}
+
+function showStatusIn(parent, message) {
+  addText(parent, 'p', message, 'status');
+}
+
+function closeModal(id) {
+  $(id).classList.remove('open');
+}
+
+document.querySelectorAll('[data-close]').forEach(button => {
+  button.addEventListener('click', () => closeModal(button.dataset.close));
+});
+
+document.querySelectorAll('.modal').forEach(modal => {
+  modal.addEventListener('click', event => {
+    if (event.target === modal) modal.classList.remove('open');
+  });
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    document.querySelectorAll('.modal.open').forEach(modal => modal.classList.remove('open'));
+  }
+});
+
+searchInput.addEventListener('input', onSearchInput);
+$('latestRefresh').addEventListener('click', loadLatest);
+
+// Load the homepage catalog automatically.
+loadLatest();
+</script>
+</body>
+</html>
