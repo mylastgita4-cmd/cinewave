@@ -1,3 +1,4 @@
+
 name = "cinewave"
 main = "worker.js"
 compatibility_date = "2026-10-17"
@@ -22,7 +23,4 @@ ALLOWED_ORIGINS = ""
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = ""kv_namespaces": [{
-                    "binding": "KV_BINDING",
-                    "id": "1df33e9670cf4f469813aa66d8112920"
-                 }]"
+id = "1df33e9670cf4f469813aa66d8112920"
