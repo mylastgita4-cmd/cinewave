@@ -17,7 +17,7 @@ export default {
         return await withLimits(env, cfg, cors, () => handleMovies(env, cfg, url, cors));
       }
       if (url.pathname === '/api/latest') {
-        return await withLimits(env, cfg, cors, () => handleLatest(env, cfg, cors));
+        return await withLimits(env, cfg, cors, () => handleHome(env, cfg, cors));
       }
       if (url.pathname === '/api/torrents') {
         return await withLimits(env, cfg, cors, () => handleTorrents(env, cfg, url, cors));
@@ -28,6 +28,7 @@ export default {
           metadataProvider: cfg.metadataProvider,
           torrentProvider: cfg.torrentProvider,
           kvBound: !!env.CACHE,
+          tmdbKeyPresent: !!env.TMDB_API_KEY,
         }, 200, cors);
       }
       return new Response('Not found', { status: 404, headers: cors });
@@ -40,17 +41,14 @@ export default {
 
 function readConfig(env) {
   return {
-    // Frontend normally calls providers directly from the visitor's device;
-    // these Worker routes are the cached fallback. 'itunes' kept as name for
-    // the proxy adapter; set METADATA_PROVIDER in wrangler.toml if preferred.
-    metadataProvider: env.METADATA_PROVIDER || 'itunes',
+    metadataProvider: env.METADATA_PROVIDER || 'tmdb',
     torrentProvider: env.TORRENT_PROVIDER || 'yts',
     tmdbApiKey: env.TMDB_API_KEY || '',
     imageBase: env.IMAGE_BASE || 'https://image.tmdb.org/t/p/w500',
     cacheTtl: parseInt(env.CACHE_TTL || '3600', 10),
     torrentTtl: parseInt(env.TORRENT_CACHE_TTL || '900', 10),
-    latestTtl: parseInt(env.LATEST_CACHE_TTL || '1800', 10),
-    rlMax: parseInt(env.RATE_LIMIT_MAX || '30', 10),
+    homeTtl: parseInt(env.HOME_CACHE_TTL || '1800', 10),
+    rlMax: parseInt(env.RATE_LIMIT_MAX || '60', 10),
     rlWindow: parseInt(env.RATE_LIMIT_WINDOW || '60', 10),
     jackettBase: env.JACKETT_BASE_URL || '',
     jackettKey: env.JACKETT_API_KEY || '',
@@ -74,62 +72,118 @@ async function withLimits(env, cfg, cors, fn) {
   return fn();
 }
 
+// ---- Homepage: Latest (now_playing) + Popular, TMDB, KV-cached ----
+async function handleHome(env, cfg, cors) {
+  if (!cfg.tmdbApiKey) {
+    return json({
+      error: 'TMDB_API_KEY is not set. The previous homepage source (yts.mx) is offline ' +
+        '(Cloudflare 530 / origin DNS failure), so TMDB is now required. ' +
+        'Fix: get a free key at themoviedb.org, then run: npx wrangler secret put TMDB_API_KEY',
+      needsSetup: true,
+    }, 503, cors);
+  }
+
+  const [latest, popular] = await Promise.all([
+    loadHomeSection(env, cfg, 'now_playing'),
+    loadHomeSection(env, cfg, 'popular'),
+  ]);
+
+  // If now_playing failed, popular is already the fallback inside loadHomeSection;
+  // still return popular so the homepage is never empty.
+  return json({
+    latest: latest.movies,
+    latestSource: latest.source,
+    popular: popular.movies,
+    popularSource: popular.source,
+  }, 200, cors);
+}
+
+async function loadHomeSection(env, cfg, section) {
+  const key = 'home:' + section;
+  const cached = await cacheGet(env, key);
+  if (cached) return { movies: cached, source: 'tmdb (cache)' };
+
+  let movies = [];
+  let source = 'tmdb';
+  try {
+    const data = await fetchJSON(
+      'https://api.themoviedb.org/3/movie/' + section +
+      '?api_key=' + cfg.tmdbApiKey + '&language=en-US&page=1'
+    );
+    movies = (data.results || []).map(m => ({
+      id: String(m.id),
+      title: m.title,
+      year: (m.release_date || '').slice(0, 4),
+      releaseDate: m.release_date || '',
+      overview: m.overview || '',
+      poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
+      rating: m.vote_average,
+      genres: [], // ids resolved client-side against the static genre map
+      genreIds: m.genre_ids || [],
+      trailerUrl: null,
+      storeUrl: null,
+      source: 'TMDB',
+    }));
+  } catch (e) {
+    if (section === 'now_playing') {
+      // Requirement: never leave the homepage stuck. Fall back to popular data.
+      const popKey = 'home:popular';
+      const pop = await cacheGet(env, popKey);
+      if (pop) return { movies: pop, source: 'tmdb popular (fallback)' };
+      const data = await fetchJSON(
+        'https://api.themoviedb.org/3/movie/popular?api_key=' + cfg.tmdbApiKey + '&language=en-US&page=1'
+      );
+      movies = (data.results || []).map(m => ({
+        id: String(m.id), title: m.title,
+        year: (m.release_date || '').slice(0, 4),
+        releaseDate: m.release_date || '',
+        overview: m.overview || '',
+        poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
+        rating: m.vote_average,
+        genres: [], genreIds: m.genre_ids || [],
+        trailerUrl: null, storeUrl: null, source: 'TMDB',
+      }));
+      source = 'tmdb popular (fallback)';
+    }
+    // If 'popular' itself fails here, empty array is returned and the
+    // frontend shows a clear retry message — not a stuck loader.
+  }
+
+  if (movies.length) await cachePut(env, key, movies, cfg.homeTtl);
+  return { movies: movies, source: source };
+}
+
+// ---- Search: TMDB when key present (primary), iTunes adapter as keyless fallback ----
 async function handleMovies(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   if (!q) return json({ error: 'Missing search query' }, 400, cors);
+  if (q.length > 100) return json({ error: 'Query too long' }, 400, cors);
 
-  // iTunes Search API has no pagination parameter: fetch full window once, cache, slice.
-  const baseKey = 'movies:' + cfg.metadataProvider + ':' + q.toLowerCase();
-  let full = await cacheGet(env, baseKey);
-  if (!full) {
-    const adapter = getMetadataAdapter(cfg.metadataProvider);
-    full = await adapter.search(cfg, q, 1);
-    await cachePut(env, baseKey, full, cfg.cacheTtl);
+  // Prefer TMDB when configured; else keyless iTunes (fetch-full-window + slice).
+  const provider = cfg.tmdbApiKey ? 'tmdb' : cfg.metadataProvider;
+  const key = 'movies:' + provider + ':' + q.toLowerCase() + (provider === 'tmdb' ? ':' + page : '');
+
+  let payload = await cacheGet(env, key);
+  if (!payload) {
+    const adapter = getMetadataAdapter(provider);
+    payload = await adapter.search(cfg, q, page);
+    await cachePut(env, key, payload, cfg.cacheTtl);
   }
 
-  const perPage = full.perPage || 20;
-  const totalPages = full.totalPages || 1;
+  if (provider === 'tmdb') {
+    return json(payload, 200, cors); // TMDB adapter already returns correct page shape
+  }
+  // iTunes-style full-window payload: slice server-side
+  const perPage = payload.perPage || 20;
+  const totalPages = payload.totalPages || 1;
   const start = (page - 1) * perPage;
-
   return json({
-    page: page,
-    perPage: perPage,
-    totalPages: totalPages,
-    totalResults: full.totalResults,
-    results: (full.results || []).slice(start, start + perPage),
-    source: full.source,
+    page: page, perPage: perPage, totalPages: totalPages,
+    totalResults: payload.totalResults,
+    results: (payload.results || []).slice(start, start + perPage),
+    source: payload.source,
   }, 200, cors);
-}
-
-// Latest movies via YTS documented parameter sort_by=date_added (keyless).
-async function handleLatest(env, cfg, cors) {
-  const key = 'latest:' + cfg.torrentProvider;
-  const cached = await cacheGet(env, key);
-  if (cached) return json(cached, 200, cors);
-
-  const data = await fetchJSON(
-    'https://yts.mx/api/v2/list_movies.json?limit=20&sort_by=date_added&order_by=desc'
-  );
-  const movies = (data && data.data && data.data.movies) || [];
-  const results = movies.map(m => ({
-    id: m.imdb_code || String(m.id),
-    title: m.title,
-    year: m.year ? String(m.year) : '',
-    overview: m.synopsis || m.description_full || '',
-    genres: m.genres || [],
-    poster: m.medium_cover_image || null,
-    rating: m.rating,
-    trailerUrl: null,
-    storeUrl: null,
-    artist: null,
-    source: 'YTS',
-    _ytsTitle: m.title,
-    _ytsYear: m.year,
-  }));
-  const payload = { results: results, totalResults: results.length, source: 'yts' };
-  await cachePut(env, key, payload, cfg.latestTtl);
-  return json(payload, 200, cors);
 }
 
 async function handleTorrents(env, cfg, url, cors) {
@@ -159,7 +213,7 @@ async function handleTorrents(env, cfg, url, cors) {
   return json(payload, 200, cors);
 }
 
-// ---- Caching: uses the existing CACHE KV binding; falls back to in-memory ----
+// ---- Caching: existing CACHE KV binding; in-memory fallback ----
 const mem = new Map();
 async function cacheGet(env, key) {
   const hit = mem.get(key);
@@ -183,19 +237,7 @@ async function cachePut(env, key, value, ttl) {
 }
 
 async function fetchJSON(url) {
-  const res = await fetch(url, {
-    headers: {
-      // Browser-like UA improves odds against provider bot filters on proxy calls
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36',
-      'Accept': 'application/json',
-    },
-  });
-  if (res.status === 403) {
-    throw Object.assign(new Error(
-      'The upstream provider refused this server-side request (HTTP 403). ' +
-      'This provider blocks datacenter IPs — the site will use browser-direct requests instead.'
-    ), { status: 502 });
-  }
+  const res = await fetch(url, { headers: { 'Accept': 'application/json', 'User-Agent': 'CineWave/1.0' } });
   if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
   const text = await res.text();
   try { return JSON.parse(text); }
