@@ -1,3 +1,4 @@
+
 name = "cinewave"
 main = "worker.js"
 compatibility_date = "2026-10-17"
@@ -14,6 +15,7 @@ TORRENT_PROVIDER = "yts"
 
 CACHE_TTL = "3600"
 TORRENT_CACHE_TTL = "900"
+LATEST_CACHE_TTL = "1800"
 
 RATE_LIMIT_MAX = "30"
 RATE_LIMIT_WINDOW = "60"
