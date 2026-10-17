@@ -9,7 +9,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [vars]
-METADATA_PROVIDER = "tmdb"
+METADATA_PROVIDER = "itunes"
 TORRENT_PROVIDER = "yts"
 
 CACHE_TTL = "3600"
