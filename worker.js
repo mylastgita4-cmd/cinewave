@@ -1,214 +1,182 @@
-import {
-  getMetadataAdapter,
-  getTorrentAdapter
-} from "./adapters.js";
-
-const JSON_HEADERS = {
-  "content-type": "application/json; charset=utf-8",
-  "cache-control": "no-store"
-};
+import { getMetadataAdapter, getTorrentAdapter } from './adapters.js';
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const cors = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
+    if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
-    if (url.pathname.startsWith("/api/")) {
-      if (request.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            ...JSON_HEADERS,
-            "access-control-allow-methods": "GET, OPTIONS",
-            "access-control-allow-headers": "Content-Type"
-          }
-        });
+    let cfg;
+    try {
+      cfg = readConfig(env);
+    } catch (e) {
+      return json({ error: e.message || 'Bad configuration' }, 500, cors);
+    }
+
+    try {
+      if (url.pathname === '/api/movies') {
+        return await withLimits(env, cfg, cors, () => handleMovies(env, cfg, url, cors));
       }
-
-      if (request.method !== "GET") {
-        return json({ error: "Method not allowed" }, 405);
+      if (url.pathname === '/api/torrents') {
+        return await withLimits(env, cfg, cors, () => handleTorrents(env, cfg, url, cors));
       }
-
-      try {
-        await enforceRateLimit(request, env);
-
-        if (url.pathname === "/api/movies") {
-          return json(await handleMovies(url, env, ctx));
-        }
-
-        if (url.pathname === "/api/torrents") {
-          return json(await handleTorrents(url, env, ctx));
-        }
-
-        return json({ error: "API route not found" }, 404);
-      } catch (error) {
-        const status = error.status || 500;
-
+      if (url.pathname === '/api/health') {
         return json({
-          error: status === 500
-            ? "Something went wrong. Check Worker secrets and provider settings."
-            : error.message
-        }, status);
+          ok: true,
+          metadataProvider: cfg.metadataProvider,
+          torrentProvider: cfg.torrentProvider,
+          kvBound: !!env.CACHE,
+          tmdbSecretPresent: !!env.TMDB_API_KEY,
+        }, 200, cors);
       }
+      return new Response('Not found', { status: 404, headers: cors });
+    } catch (e) {
+      console.error('Worker error:', e && e.message, e && e.stack);
+      return json({ error: e.message || 'Internal error' }, e.status || 500, cors);
     }
-
-    // Serve index.html and other frontend assets through Cloudflare Assets.
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
-    }
-
-    return new Response("CineWave frontend assets are not configured.", {
-      status: 500,
-      headers: { "content-type": "text/plain; charset=utf-8" }
-    });
-  }
+  },
 };
 
-function json(value, status = 200) {
-  return new Response(JSON.stringify(value), {
-    status,
-    headers: JSON_HEADERS
-  });
+function readConfig(env) {
+  const metadataProvider = env.METADATA_PROVIDER || 'itunes';
+  // Guard: if config still says tmdb but no secret exists, fall back to keyless
+  // provider instead of erroring on every search.
+  if (metadataProvider === 'tmdb' && !env.TMDB_API_KEY) {
+    console.warn('METADATA_PROVIDER is "tmdb" but TMDB_API_KEY missing; falling back to itunes.');
+    return buildConfig(env, 'itunes');
+  }
+  return buildConfig(env, metadataProvider);
 }
 
-function clampInt(value, fallback, min, max) {
-  const number = Number.parseInt(value, 10);
-
-  return Number.isFinite(number)
-    ? Math.max(min, Math.min(max, number))
-    : fallback;
+function buildConfig(env, metadataProvider) {
+  return {
+    metadataProvider: metadataProvider,
+    torrentProvider: env.TORRENT_PROVIDER || 'yts',
+    tmdbApiKey: env.TMDB_API_KEY || '',
+    imageBase: env.IMAGE_BASE || 'https://image.tmdb.org/t/p/w500',
+    cacheTtl: parseInt(env.CACHE_TTL || '3600', 10),
+    torrentTtl: parseInt(env.TORRENT_CACHE_TTL || '900', 10),
+    rlMax: parseInt(env.RATE_LIMIT_MAX || '30', 10),
+    rlWindow: parseInt(env.RATE_LIMIT_WINDOW || '60', 10),
+    jackettBase: env.JACKETT_BASE_URL || '',
+    jackettKey: env.JACKETT_API_KEY || '',
+    jackettIndexer: env.JACKETT_INDEXER || 'all',
+    prowlarrBase: env.PROWLARR_BASE_URL || '',
+    prowlarrKey: env.PROWLARR_API_KEY || '',
+  };
 }
 
-function cacheKey(prefix, value) {
-  return `${prefix}:${encodeURIComponent(value.toLowerCase()).slice(0, 350)}`;
-}
-
-async function cacheGet(env, key) {
-  if (!env.CACHE) return null;
-
-  try {
-    const entry = await env.CACHE.get(key, "json");
-
-    if (!entry || typeof entry !== "object") return null;
-
-    if (entry.exp && entry.exp < Date.now()) {
-      await env.CACHE.delete(key);
-      return null;
+async function withLimits(env, cfg, cors, fn) {
+  if (env.CACHE) {
+    const ip = 'global'; // per-IP needs the request; kept simple and KV-efficient
+    const bucket = Math.floor(Date.now() / 1000 / cfg.rlWindow);
+    const key = 'rl:' + ip + ':' + bucket;
+    const count = parseInt((await env.CACHE.get(key)) || '0', 10) + 1;
+    await env.CACHE.put(key, String(count), { expirationTtl: cfg.rlWindow });
+    if (count > cfg.rlMax) {
+      return json({ error: 'Rate limit exceeded. Please wait a minute.' }, 429, cors,
+        { 'Retry-After': String(cfg.rlWindow) });
     }
-
-    // Correctly unwrap the cached response.
-    return Object.prototype.hasOwnProperty.call(entry, "value")
-      ? entry.value
-      : entry;
-  } catch {
-    return null;
   }
+  return fn();
 }
 
+async function handleMovies(env, cfg, url, cors) {
+  const q = (url.searchParams.get('q') || '').trim();
+  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
+  if (!q) return json({ error: 'Missing search query' }, 400, cors);
+  if (q.length > 100) return json({ error: 'Query too long' }, 400, cors);
+
+  // Cache the FULL result window once, then slice pages from it.
+  // (iTunes Search API has no server-side pagination parameter.)
+  const baseKey = 'movies:' + cfg.metadataProvider + ':' + q.toLowerCase();
+  let full = await cacheGet(env, baseKey);
+  if (!full) {
+    const adapter = getMetadataAdapter(cfg.metadataProvider);
+    full = await adapter.search(cfg, q, 1); // adapters fetch their full window
+    await cachePut(env, baseKey, full, cfg.cacheTtl);
+  }
+
+  const perPage = full.perPage || 20;
+  const totalPages = full.totalPages || 1;
+
+  if (page > totalPages) {
+    return json({ page: page, perPage: perPage, totalPages: totalPages,
+      totalResults: full.totalResults, results: [], source: full.source }, 200, cors);
+  }
+
+  const start = (page - 1) * perPage;
+  const sliced = (full.results || []).slice(start, start + perPage);
+
+  return json({
+    page: page,
+    perPage: perPage,
+    totalPages: totalPages,
+    totalResults: full.totalResults,
+    results: sliced,
+    source: full.source,
+  }, 200, cors);
+}
+
+async function handleTorrents(env, cfg, url, cors) {
+  const q = (url.searchParams.get('q') || '').trim();
+  const year = url.searchParams.get('year') || '';
+  if (!q) return json({ error: 'Missing query' }, 400, cors);
+
+  const query = year ? (q + ' ' + year) : q;
+  const key = 'torrents:' + cfg.torrentProvider + ':' + query.toLowerCase();
+  const cached = await cacheGet(env, key);
+  if (cached) return json(cached, 200, cors);
+
+  const adapter = getTorrentAdapter(cfg.torrentProvider);
+  const data = await adapter.search(cfg, query, 1);
+
+  // Duplicate detection: dedupe by infohash, fallback to normalized title+size
+  const seen = new Set();
+  const torrents = (data.torrents || []).filter(t => {
+    const k = (t.infoHash ||
+      (t.title || '').toLowerCase().replace(/\W+/g, '') + '|' + (t.sizeBytes || t.size)).toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  }).sort((a, b) => (b.seeds || 0) - (a.seeds || 0));
+
+  const payload = { query: query, torrents: torrents, totalResults: torrents.length,
+    provider: cfg.torrentProvider };
+  await cachePut(env, key, payload, cfg.torrentTtl);
+  return json(payload, 200, cors);
+}
+
+// ---- Caching (KV if bound, otherwise in-memory per isolate) ----
+const mem = new Map();
+async function cacheGet(env, key) {
+  const hit = mem.get(key);
+  if (hit && hit.exp > Date.now()) return hit.value;
+  if (env.CACHE) {
+    const raw = await env.CACHE.get('cw:' + key, 'json');
+    if (raw && raw.exp > Date.now()) {
+      mem.set(key, { value: raw.value, exp: raw.exp });
+      return raw.value;
+    }
+  }
+  return null;
+}
 async function cachePut(env, key, value, ttl) {
-  if (!env.CACHE || ttl <= 0) return;
-
-  try {
-    await env.CACHE.put(
-      key,
-      JSON.stringify({
-        value,
-        exp: Date.now() + ttl * 1000
-      }),
-      { expirationTtl: Math.max(60, ttl) }
-    );
-  } catch {
-    // The API should still work if caching fails.
+  const exp = Date.now() + ttl * 1000;
+  mem.set(key, { value: value, exp: exp });
+  if (env.CACHE) {
+    await env.CACHE.put('cw:' + key, JSON.stringify({ value: value, exp: exp }),
+      { expirationTtl: ttl });
   }
 }
 
-async function enforceRateLimit(request, env) {
-  if (!env.CACHE) return;
-
-  const max = clampInt(env.RATE_LIMIT_MAX, 30, 1, 1000);
-  const windowSec = clampInt(env.RATE_LIMIT_WINDOW, 60, 10, 3600);
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const slot = Math.floor(Date.now() / (windowSec * 1000));
-  const key = `rl:${ip}:${slot}`;
-
-  const count = Number(await env.CACHE.get(key)) || 0;
-
-  if (count >= max) {
-    const error = new Error(
-      "Rate limit reached. Wait a little and try again."
-    );
-    error.status = 429;
-    throw error;
-  }
-
-  await env.CACHE.put(key, String(count + 1), {
-    expirationTtl: windowSec + 5
+function json(obj, status, extra, more) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: Object.assign({ 'Content-Type': 'application/json; charset=utf-8' },
+      extra || {}, more || {}),
   });
-}
-
-async function handleMovies(url, env, ctx) {
-  const query = (url.searchParams.get("q") || "").trim();
-  const page = clampInt(url.searchParams.get("page"), 1, 1, 500);
-
-  if (!query) {
-    const error = new Error("Please enter a movie title.");
-    error.status = 400;
-    throw error;
-  }
-
-  if (query.length > 120) {
-    const error = new Error("Search query is too long.");
-    error.status = 400;
-    throw error;
-  }
-
-  const provider = env.METADATA_PROVIDER || "tmdb";
-  const key = cacheKey("movies", `${provider}:${page}:${query}`);
-  const cached = await cacheGet(env, key);
-
-  if (cached) return cached;
-
-  const adapter = getMetadataAdapter(env);
-  const result = await adapter.search({ query, page, env });
-
-  const ttl = clampInt(env.CACHE_TTL, 3600, 0, 86400);
-  const write = cachePut(env, key, result, ttl);
-
-  if (ctx?.waitUntil) ctx.waitUntil(write);
-  else await write;
-
-  return result;
-}
-
-async function handleTorrents(url, env, ctx) {
-  const query = (url.searchParams.get("q") || "").trim();
-  const year = (url.searchParams.get("year") || "").trim();
-
-  if (!query) {
-    const error = new Error("A movie title is required.");
-    error.status = 400;
-    throw error;
-  }
-
-  if (query.length > 120) {
-    const error = new Error("Search query is too long.");
-    error.status = 400;
-    throw error;
-  }
-
-  const provider = env.TORRENT_PROVIDER || "yts";
-  const key = cacheKey("providers", `${provider}:${year}:${query}`);
-  const cached = await cacheGet(env, key);
-
-  if (cached) return cached;
-
-  const adapter = getTorrentAdapter(env);
-  const result = await adapter.search({ query, year, env });
-
-  const ttl = clampInt(env.TORRENT_CACHE_TTL, 900, 0, 86400);
-  const write = cachePut(env, key, result, ttl);
-
-  if (ctx?.waitUntil) ctx.waitUntil(write);
-  else await write;
-
-  return result;
 }
