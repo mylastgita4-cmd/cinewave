@@ -1,436 +1,245 @@
-const TMDB_GENRES = {
-  28: "Action",
-  12: "Adventure",
-  16: "Animation",
-  35: "Comedy",
-  80: "Crime",
-  99: "Documentary",
-  18: "Drama",
-  10751: "Family",
-  14: "Fantasy",
-  36: "History",
-  27: "Horror",
-  10402: "Music",
-  9648: "Mystery",
-  10749: "Romance",
-  878: "Science Fiction",
-  10770: "TV Movie",
-  53: "Thriller",
-  10752: "War",
-  37: "Western"
-};
+// ============================================================
+// CineWave provider adapters
+// All endpoints below are publicly documented:
+//   iTunes Search: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
+//                  (keyless; ~20 requests/minute guidance per IP)
+//   TMDB:          https://developer.themoviedb.org/reference/search-movie
+//                  (optional fallback; requires TMDB_API_KEY secret)
+//   YTS:           https://yts.mx/api  (list_movies.json, keyless)
+// ============================================================
 
-const TIMEOUT_MS = 12000;
+// ---------------- Metadata adapters ----------------
 
-function required(value, message) {
-  if (!value || !String(value).trim()) {
-    throw new Error(message);
-  }
+export const metadataAdapters = {
 
-  return String(value).trim();
-}
-
-async function fetchJson(url, options = {}) {
-  const controller = new AbortController();
-
-  const timeout = setTimeout(
-    () => controller.abort(),
-    options.timeout || TIMEOUT_MS
-  );
-
-  try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        accept: "application/json",
-        ...(options.headers || {})
-      },
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const error = new Error(
-        `Provider returned HTTP ${response.status}.`
+  // iTunes Search API — free, no API key required.
+  // NOTE: no server-side pagination parameter exists in this API.
+  // Strategy: fetch up to 200 results once, cache in KV, slice pages.
+  itunes: {
+    maxPageWindow: 10, // 10 pages x 20 per page = 200 results window
+    async search(cfg, q, page) {
+      const data = await fetchJSON(
+        'https://itunes.apple.com/search?term=' + encodeURIComponent(q) +
+        '&media=movie&entity=movie&limit=200&country=US'
       );
-
-      error.status = response.status === 429 ? 429 : 502;
-      throw error;
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (error.name === "AbortError") {
-      const timeoutError = new Error("Provider request timed out.");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function fetchText(url, options = {}) {
-  const controller = new AbortController();
-
-  const timeout = setTimeout(
-    () => controller.abort(),
-    options.timeout || TIMEOUT_MS
-  );
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/xml,text/xml,*/*",
-        ...(options.headers || {})
-      },
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const error = new Error(
-        `Provider returned HTTP ${response.status}.`
-      );
-
-      error.status = response.status === 429 ? 429 : 502;
-      throw error;
-    }
-
-    return await response.text();
-  } catch (error) {
-    if (error.name === "AbortError") {
-      const timeoutError = new Error("Provider request timed out.");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/* ---------------- TMDB MOVIE SEARCH ---------------- */
-
-async function fetchTMDB(path, params, env) {
-  const url = new URL(`https://api.themoviedb.org/3${path}`);
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, String(value));
-    }
-  }
-
-  const headers = { accept: "application/json" };
-
-  if (env.TMDB_API_READ_TOKEN) {
-    headers.Authorization = `Bearer ${env.TMDB_API_READ_TOKEN}`;
-  } else {
-    url.searchParams.set(
-      "api_key",
-      required(
-        env.TMDB_API_KEY,
-        "TMDB_API_KEY secret is not configured."
-      )
-    );
-  }
-
-  return fetchJson(url.toString(), { headers });
-}
-
-const metadataAdapters = {
-  tmdb: {
-    async search({ query, page, env }) {
-      const data = await fetchTMDB(
-        "/search/movie",
-        {
-          query,
-          page,
-          include_adult: false
-        },
-        env
-      );
-
-      const results = (data.results || []).map(movie => ({
-        id: String(movie.id),
-        title: movie.title || movie.original_title || "Untitled",
-        originalTitle: movie.original_title || "",
-        year: movie.release_date
-          ? movie.release_date.slice(0, 4)
-          : "",
-        releaseDate: movie.release_date || "",
-        overview: movie.overview || "",
-        poster: movie.poster_path || null,
-        backdrop: movie.backdrop_path || null,
-        rating: Number.isFinite(Number(movie.vote_average))
-          ? Number(movie.vote_average)
+      const results = (data.results || []).map(m => ({
+        id: m.trackId != null ? String(m.trackId) : m.trackName,
+        title: m.trackName,
+        year: (m.releaseDate || '').slice(0, 4),
+        overview: m.longDescription || m.shortDescription || '',
+        genres: m.primaryGenreName ? [m.primaryGenreName] : [],
+        poster: m.artworkUrl100
+          ? m.artworkUrl100.replace('/100x100bb.jpg', '/600x600bb.jpg')
           : null,
-        genres: (movie.genre_ids || [])
-          .map(id => TMDB_GENRES[id])
-          .filter(Boolean),
-        language: movie.original_language || ""
+        rating: null, // iTunes Search API does not provide ratings
+        trailerUrl: m.previewUrl || null,
+        storeUrl: m.trackViewUrl || null,
+        artist: m.artistName || null,
       }));
-
       return {
-        page: data.page || page,
-        totalPages: data.total_pages || 1,
-        totalResults: data.total_results || results.length,
-        results
+        page: page,
+        perPage: 20,
+        totalPages: Math.max(1, Math.ceil(results.length / 20)),
+        totalResults: results.length,
+        results: results,
+        source: 'itunes',
       };
-    }
-  }
+    },
+  },
+
+  // Optional fallback — requires the TMDB_API_KEY secret.
+  tmdb: {
+    async search(cfg, q, page) {
+      if (!cfg.tmdbApiKey) {
+        throw Object.assign(new Error(
+          'TMDB_API_KEY is not configured. Either set the secret with "npx wrangler secret put TMDB_API_KEY", or set METADATA_PROVIDER = "itunes" (no key needed).'
+        ), { status: 500 });
+      }
+      const data = await fetchJSON(
+        'https://api.themoviedb.org/3/search/movie?api_key=' + cfg.tmdbApiKey +
+        '&query=' + encodeURIComponent(q) + '&page=' + page
+      );
+      return {
+        page: data.page,
+        perPage: 20,
+        totalPages: data.total_pages,
+        totalResults: data.total_results,
+        results: (data.results || []).map(m => ({
+          id: String(m.id),
+          title: m.title,
+          year: (m.release_date || '').slice(0, 4),
+          overview: m.overview || '',
+          genres: [],
+          poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
+          rating: m.vote_average,
+          trailerUrl: null,
+          storeUrl: null,
+          artist: null,
+        })),
+        source: 'tmdb',
+      };
+    },
+  },
 };
 
-/* ---------------- TORRENT / PROVIDER HELPERS ---------------- */
+// ---------------- Torrent adapters ----------------
 
-function normalizeMagnet(hash, title, trackers = []) {
-  if (!hash) return "";
+export const torrentAdapters = {
 
-  const cleanHash = String(hash).replace(/[^a-fA-F0-9]/g, "");
+  // YTS official public API — no API key required.
+  // Endpoint: GET https://yts.mx/api/v2/list_movies.json?query_term=&page=&limit=
+  yts: {
+    async search(cfg, q, page) {
+      const data = await fetchJSON(
+        'https://yts.mx/api/v2/list_movies.json?query_term=' + encodeURIComponent(q) +
+        '&page=' + page + '&limit=20&sort_by=seeds'
+      );
+      const movies = (data && data.data && data.data.movies) || [];
+      const torrents = [];
+      for (const m of movies) {
+        for (const t of (m.torrents || [])) {
+          torrents.push({
+            title: m.title + ' (' + m.year + ') ' + t.quality,
+            quality: t.quality,
+            resolution: t.quality,
+            size: t.size,
+            sizeBytes: 0,
+            seeds: t.seeds,
+            peers: t.peers,
+            magnet: 'magnet:?xt=urn:btih:' + t.hash +
+              '&dn=' + encodeURIComponent(m.title + ' ' + t.quality) +
+              '&tr=' + encodeURIComponent('udp://tracker.opentrackr.org:1337/announce'),
+            torrentUrl: t.url || null,
+            infoHash: (t.hash || '').toLowerCase(),
+            source: 'YTS (' + (m.imdb_code || 'unknown imdb id') + ')',
+          });
+        }
+      }
+      return { torrents: torrents, totalResults: torrents.length, provider: 'yts' };
+    },
+  },
 
-  if (cleanHash.length < 32) return "";
-
-  const params = new URLSearchParams();
-
-  params.set("dn", title || "Movie");
-
-  for (const tracker of trackers) {
-    params.append("tr", tracker);
-  }
-
-  return `magnet:?xt=urn:btih:${cleanHash}&${params.toString()}`;
-}
-
-function formatSize(bytes) {
-  const number = Number(bytes);
-
-  if (!Number.isFinite(number) || number <= 0) return "";
-
-  const units = ["B", "KB", "MB", "GB", "TB"];
-
-  const index = Math.min(
-    Math.floor(Math.log(number) / Math.log(1024)),
-    units.length - 1
-  );
-
-  return `${(number / Math.pow(1024, index)).toFixed(index ? 1 : 0)} ${units[index]}`;
-}
-
-/* ---------------- YTS ADAPTER ---------------- */
-
-const ytsAdapter = {
-  async search({ query, year }) {
-    const url = new URL("https://yts.mx/api/v2/list_movies.json");
-
-    url.searchParams.set("query_term", query);
-    url.searchParams.set("limit", "20");
-
-    if (year && /^\d{4}$/.test(year)) {
-      url.searchParams.set("year", year);
-    }
-
-    const data = await fetchJson(url.toString());
-    const movies = data?.data?.movies || [];
-    const results = [];
-
-    for (const movie of movies) {
-      for (const torrent of movie.torrents || []) {
-        results.push({
-          title: `${movie.title} (${movie.year})`,
-          year: movie.year,
-          quality: torrent.quality || "",
-          type: torrent.type || "",
-          size: torrent.size || "",
-          seeds: Number(torrent.seeds) || 0,
-          peers: Number(torrent.peers) || 0,
-          provider: "YTS",
-          torrentUrl: torrent.url || "",
-          magnet: normalizeMagnet(
-            torrent.hash,
-            movie.title,
-            [
-              "udp://open.demonii.com:1337/announce",
-              "udp://tracker.openbittorrent.com:80/announce"
-            ]
-          )
+  // Jackett (self-hosted, Torznab XML).
+  // Needs: var JACKETT_BASE_URL, var JACKETT_INDEXER, secret JACKETT_API_KEY,
+  // and TORRENT_PROVIDER = "jackett".
+  jackett: {
+    async search(cfg, q, page) {
+      if (!cfg.jackettBase) {
+        throw Object.assign(new Error('JACKETT_BASE_URL not configured'), { status: 500 });
+      }
+      const limit = 20, offset = (page - 1) * limit;
+      const url = cfg.jackettBase + '/api/v2.0/indexers/' + (cfg.jackettIndexer || 'all') +
+        '/results/torznab/api?apikey=' + cfg.jackettKey +
+        '&t=movie&q=' + encodeURIComponent(q) + '&limit=' + limit + '&offset=' + offset;
+      const xml = await fetchText(url);
+      const torrents = [];
+      const itemRe = /<item>([\s\S]*?)<\/item>/g;
+      let m;
+      while ((m = itemRe.exec(xml))) {
+        const b = m[1];
+        const tag = n => { const r = new RegExp('<' + n + '[^>]*>([\\s\\S]*?)<\\/' + n + '>').exec(b); return r ? r[1] : null; };
+        const attr = n => { const r = new RegExp('name="' + n + '"\\s+value="([^"]*)"').exec(b); return r ? r[1] : null; };
+        const link = tag('link') || '';
+        const magnetRaw = tag('magnetLink') || (link.indexOf('magnet:') === 0 ? link : null);
+        const bytes = parseInt(attr('size') || '0', 10);
+        const title = tag('title') || '';
+        torrents.push({
+          title: title,
+          quality: attr('resolution') || (/(2160|1080|720)p/i.exec(title) || [''])[0],
+          resolution: attr('resolution') || '',
+          size: bytes ? humanSize(bytes) : '',
+          sizeBytes: bytes,
+          seeds: parseInt(attr('seeders') || '0', 10),
+          peers: parseInt(attr('peers') || '0', 10),
+          magnet: magnetRaw,
+          torrentUrl: link.indexOf('http') === 0 ? link : null,
+          infoHash: magnetRaw ? (((/btih:([a-z0-9]{40})/i.exec(magnetRaw)) || [])[1] || '').toLowerCase() : null,
+          source: attr('jackettindexer') || 'Jackett',
         });
       }
-    }
+      return { torrents: torrents, totalResults: torrents.length, provider: 'jackett' };
+    },
+  },
 
-    return { provider: "yts", results };
-  }
-};
-
-/* ---------------- JACKETT ADAPTER ---------------- */
-
-function decodeXML(value) {
-  return String(value || "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
-function parseTorznab(xml, providerName) {
-  const items = String(xml).match(/<item\b[\s\S]*?<\/item>/gi) || [];
-
-  return items.map(item => {
-    function tag(name) {
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-      const match = item.match(
-        new RegExp(
-          `<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`,
-          "i"
-        )
+  // Prowlarr (self-hosted). Needs: var PROWLARR_BASE_URL, secret PROWLARR_API_KEY,
+  // and TORRENT_PROVIDER = "prowlarr".
+  prowlarr: {
+    async search(cfg, q, page) {
+      if (!cfg.prowlarrBase) {
+        throw Object.assign(new Error('PROWLARR_BASE_URL not configured'), { status: 500 });
+      }
+      const limit = 20, offset = (page - 1) * limit;
+      const data = await fetchJSON(
+        cfg.prowlarrBase + '/api/v1/search?query=' + encodeURIComponent(q) +
+        '&type=search&apikey=' + cfg.prowlarrKey + '&limit=' + limit + '&offset=' + offset
       );
+      const list = Array.isArray(data) ? data : [];
+      const torrents = list.map(r => ({
+        title: r.title,
+        quality: r.protocol === 'torrent' ? (r.indexer || '') : '',
+        resolution: (/(2160|1080|720)p/i.exec(r.title || '') || [''])[0],
+        size: r.size ? humanSize(r.size) : '',
+        sizeBytes: r.size || 0,
+        seeds: r.seeders != null ? r.seeders : 0,
+        peers: r.leechers != null ? r.leechers : 0,
+        magnet: r.magnetUrl || null,
+        torrentUrl: r.downloadUrl || null,
+        infoHash: r.infoHash || (r.magnetUrl ? (((/btih:([a-z0-9]{40})/i.exec(r.magnetUrl)) || [])[1] || '').toLowerCase() : null),
+        source: r.indexer || 'Prowlarr',
+      }));
+      return { torrents: torrents, totalResults: torrents.length, provider: 'prowlarr' };
+    },
+  },
+};
 
-      if (!match) return "";
-
-      const value = match[1]
-        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-        .trim();
-
-      return decodeXML(value);
-    }
-
-    function attribute(name, attr) {
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-      const match = item.match(
-        new RegExp(
-          `<${escaped}\\b[^>]*\\b${attr}=["']([^"']*)["'][^>]*\\/?>`,
-          "i"
-        )
-      );
-
-      return match ? decodeXML(match[1]) : "";
-    }
-
-    const title = tag("title") || "Untitled result";
-    const link = tag("link") || attribute("enclosure", "url");
-    const magnet = /^magnet:\?/i.test(link) ? link : "";
-
-    const seeders = Number(attribute("torznab:attr", "value")) || 0;
-
-    return {
-      title,
-      provider: providerName,
-      size: formatSize(Number(attribute("size", "value")) || 0),
-      seeds: seeders,
-      peers: Number(attribute("peers", "value")) || 0,
-      torrentUrl: magnet ? "" : link,
-      magnet
-    };
-  });
+export function getMetadataAdapter(name) {
+  const a = metadataAdapters[name];
+  if (!a) throw Object.assign(new Error('Unknown metadata provider: ' + name), { status: 500 });
+  return a;
+}
+export function getTorrentAdapter(name) {
+  const a = torrentAdapters[name];
+  if (!a) throw Object.assign(new Error('Unknown torrent provider: ' + name), { status: 500 });
+  return a;
 }
 
-const jackettAdapter = {
-  async search({ query, env }) {
-    const base = required(
-      env.JACKETT_URL,
-      "Set JACKETT_URL in your Worker configuration."
-    );
+// ---------------- Shared fetch helpers (timeout, retry, 429 backoff) ----------------
 
-    const apiKey = required(
-      env.JACKETT_API_KEY,
-      "Set JACKETT_API_KEY as a Worker secret."
-    );
+async function fetchJSON(url, retries) {
+  const text = await fetchWithRetry(url, retries == null ? 2 : retries);
+  try { return JSON.parse(text); }
+  catch (e) { throw Object.assign(new Error('Upstream returned invalid data'), { status: 502 }); }
+}
+async function fetchText(url, retries) { return fetchWithRetry(url, retries == null ? 2 : retries); }
 
-    const url = new URL(
-      "/api/v2.0/indexers/all/results/torznab/api",
-      base
-    );
-
-    url.searchParams.set("apikey", apiKey);
-    url.searchParams.set("t", "movie");
-    url.searchParams.set("q", query);
-
-    const xml = await fetchText(url.toString());
-
-    return {
-      provider: "jackett",
-      results: parseTorznab(xml, "Jackett")
-    };
-  }
-};
-
-/* ---------------- PROWLARR ADAPTER ---------------- */
-
-const prowlarrAdapter = {
-  async search({ query, env }) {
-    const base = required(
-      env.PROWLARR_URL,
-      "Set PROWLARR_URL in your Worker configuration."
-    );
-
-    const apiKey = required(
-      env.PROWLARR_API_KEY,
-      "Set PROWLARR_API_KEY as a Worker secret."
-    );
-
-    const url = new URL("/api/v1/search", base);
-
-    url.searchParams.set("query", query);
-    url.searchParams.set("type", "movie");
-
-    const data = await fetchJson(url.toString(), {
-      headers: { "X-Api-Key": apiKey }
-    });
-
-    const results = (Array.isArray(data) ? data : []).map(item => ({
-      title: item.title || "Untitled result",
-      provider: item.indexer || "Prowlarr",
-      size: formatSize(item.size),
-      seeds: item.seeders ?? null,
-      peers: item.leechers ?? null,
-      torrentUrl: item.downloadUrl || item.link || "",
-      magnet: item.magnetUrl ||
-        (String(item.downloadUrl || "").startsWith("magnet:")
-          ? item.downloadUrl
-          : "")
-    }));
-
-    return { provider: "prowlarr", results };
-  }
-};
-
-/* ---------------- PROVIDER SELECTION ---------------- */
-
-const torrentAdapters = {
-  yts: ytsAdapter,
-  jackett: jackettAdapter,
-  prowlarr: prowlarrAdapter,
-
-  none: {
-    async search() {
-      return { provider: "none", results: [] };
+async function fetchWithRetry(url, retries) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'CineWave/1.0' } });
+      clearTimeout(timer);
+      if (res.status === 429) {
+        if (attempt < retries) {
+          const wait = parseInt(res.headers.get('retry-after') || '2', 10);
+          await new Promise(r => setTimeout(r, wait * 1000));
+          continue;
+        }
+        throw Object.assign(new Error('Upstream rate limited — try again shortly'), { status: 429 });
+      }
+      if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
+      return await res.text();
+    } catch (e) {
+      clearTimeout(timer);
+      if (attempt === retries || e.status === 429 || e.status === 502) throw e;
+      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
     }
   }
-};
-
-export function getMetadataAdapter(env) {
-  const name = String(env.METADATA_PROVIDER || "tmdb").toLowerCase();
-  const adapter = metadataAdapters[name];
-
-  if (!adapter) {
-    throw new Error(`Unsupported metadata provider: ${name}`);
-  }
-
-  return adapter;
 }
 
-export function getTorrentAdapter(env) {
-  const name = String(env.TORRENT_PROVIDER || "yts").toLowerCase();
-  const adapter = torrentAdapters[name];
-
-  if (!adapter) {
-    throw new Error(
-      `Unsupported provider: ${name}. Choose yts, jackett, prowlarr or none.`
-    );
-  }
-
-  return adapter;
+function humanSize(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0, n = bytes;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(1) + ' ' + units[i];
 }
