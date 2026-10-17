@@ -1,23 +1,17 @@
 // ============================================================
-// CineWave provider adapters (Worker-side).
-// Documented endpoints only:
+// CineWave provider adapters.
+// Documented endpoints only (none invented):
 //   TMDB:   https://developer.themoviedb.org/reference/search-movie
-//           /3/movie/now_playing, /3/movie/popular, /3/movie/{id}/videos
 //   iTunes: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
-//   YTS:    https://yts.mx/api — NOTE: yts.mx is currently experiencing
-//           outages (Cloudflare 530/1016 origin DNS errors). Kept as the
-//           torrent provider with graceful failure; never load-bearing
-//           for the homepage.
+//   YTS:    https://yts.mx/api — currently offline (530/1016); torrents only,
+//           homepage no longer depends on it.
 // ============================================================
 
 export const metadataAdapters = {
-
   tmdb: {
     async search(cfg, q, page) {
       if (!cfg.tmdbApiKey) {
-        throw Object.assign(new Error(
-          'TMDB_API_KEY is not set. Get a free key at themoviedb.org and run: npx wrangler secret put TMDB_API_KEY'
-        ), { status: 500 });
+        throw Object.assign(new Error('TMDB_API_KEY not set'), { status: 500 });
       }
       const data = await fetchJSON(
         'https://api.themoviedb.org/3/search/movie?api_key=' + cfg.tmdbApiKey +
@@ -27,26 +21,19 @@ export const metadataAdapters = {
         page: data.page, perPage: 20,
         totalPages: data.total_pages, totalResults: data.total_results,
         results: (data.results || []).map(m => ({
-          id: String(m.id),
-          title: m.title,
+          id: String(m.id), title: m.title,
           year: (m.release_date || '').slice(0, 4),
           releaseDate: m.release_date || '',
           overview: m.overview || '',
           poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
           rating: m.vote_average,
-          genres: [],
-          genreIds: m.genre_ids || [],
-          trailerUrl: null,
-          storeUrl: null,
-          source: 'TMDB',
+          genres: [], genreIds: m.genre_ids || [],
+          trailerUrl: null, storeUrl: null, source: 'TMDB',
         })),
         source: 'tmdb',
       };
     },
   },
-
-  // Keyless fallback for search (Apple may 403 datacenter IPs; the frontend
-  // calls iTunes directly from the visitor's device first, so this is rare).
   itunes: {
     async search(cfg, q, page) {
       const data = await fetchJSON(
@@ -107,13 +94,7 @@ export const torrentAdapters = {
       return { torrents: torrents, totalResults: torrents.length, provider: 'yts' };
     },
   },
-  jackett: { /* unchanged from previous version — omitted here only if you
-                never configured it; re-add from your prior adapters.js */ },
-  prowlarr: { /* unchanged from previous version */ },
 };
-// NOTE: if you actively use jackett/prowlarr, keep your existing copies of
-// those adapters; they were unchanged in this update. If you never used them,
-// delete the two stub lines above.
 
 export function getMetadataAdapter(name) {
   const a = metadataAdapters[name];
