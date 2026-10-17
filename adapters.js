@@ -1,22 +1,18 @@
 // ============================================================
-// CineWave provider adapters
-// All endpoints below are publicly documented:
+// CineWave provider adapters (Worker-side proxy adapters).
+// The frontend calls the same keyless APIs directly from the
+// visitor's device first (Apple/yts.mx block datacenter IPs
+// with 403); these adapters power the cached fallback routes.
+//
+// Documented endpoints used (none invented):
 //   iTunes Search: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
-//                  (keyless; ~20 requests/minute guidance per IP)
-//   TMDB:          https://developer.themoviedb.org/reference/search-movie
-//                  (optional fallback; requires TMDB_API_KEY secret)
-//   YTS:           https://yts.mx/api  (list_movies.json, keyless)
+//   YTS:           https://yts.mx/api  (list_movies.json)
+//   Jackett:       Torznab /api/v2.0/indexers/{indexer}/results/torznab/api
+//   Prowlarr:      API v1 /api/v1/search
 // ============================================================
 
-// ---------------- Metadata adapters ----------------
-
 export const metadataAdapters = {
-
-  // iTunes Search API — free, no API key required.
-  // NOTE: no server-side pagination parameter exists in this API.
-  // Strategy: fetch up to 200 results once, cache in KV, slice pages.
   itunes: {
-    maxPageWindow: 10, // 10 pages x 20 per page = 200 results window
     async search(cfg, q, page) {
       const data = await fetchJSON(
         'https://itunes.apple.com/search?term=' + encodeURIComponent(q) +
@@ -31,28 +27,23 @@ export const metadataAdapters = {
         poster: m.artworkUrl100
           ? m.artworkUrl100.replace('/100x100bb.jpg', '/600x600bb.jpg')
           : null,
-        rating: null, // iTunes Search API does not provide ratings
         trailerUrl: m.previewUrl || null,
         storeUrl: m.trackViewUrl || null,
         artist: m.artistName || null,
       }));
       return {
-        page: page,
-        perPage: 20,
+        page: page, perPage: 20,
         totalPages: Math.max(1, Math.ceil(results.length / 20)),
         totalResults: results.length,
-        results: results,
-        source: 'itunes',
+        results: results, source: 'itunes-proxy',
       };
     },
   },
-
-  // Optional fallback — requires the TMDB_API_KEY secret.
   tmdb: {
     async search(cfg, q, page) {
       if (!cfg.tmdbApiKey) {
         throw Object.assign(new Error(
-          'TMDB_API_KEY is not configured. Either set the secret with "npx wrangler secret put TMDB_API_KEY", or set METADATA_PROVIDER = "itunes" (no key needed).'
+          'TMDB_API_KEY is not configured. Set it via "npx wrangler secret put TMDB_API_KEY" or use METADATA_PROVIDER = "itunes".'
         ), { status: 500 });
       }
       const data = await fetchJSON(
@@ -60,34 +51,22 @@ export const metadataAdapters = {
         '&query=' + encodeURIComponent(q) + '&page=' + page
       );
       return {
-        page: data.page,
-        perPage: 20,
-        totalPages: data.total_pages,
-        totalResults: data.total_results,
+        page: data.page, perPage: 20,
+        totalPages: data.total_pages, totalResults: data.total_results,
         results: (data.results || []).map(m => ({
-          id: String(m.id),
-          title: m.title,
+          id: String(m.id), title: m.title,
           year: (m.release_date || '').slice(0, 4),
-          overview: m.overview || '',
-          genres: [],
+          overview: m.overview || '', genres: [],
           poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
-          rating: m.vote_average,
-          trailerUrl: null,
-          storeUrl: null,
-          artist: null,
+          trailerUrl: null, storeUrl: null, artist: null,
         })),
-        source: 'tmdb',
+        source: 'tmdb-proxy',
       };
     },
   },
 };
 
-// ---------------- Torrent adapters ----------------
-
 export const torrentAdapters = {
-
-  // YTS official public API — no API key required.
-  // Endpoint: GET https://yts.mx/api/v2/list_movies.json?query_term=&page=&limit=
   yts: {
     async search(cfg, q, page) {
       const data = await fetchJSON(
@@ -100,28 +79,21 @@ export const torrentAdapters = {
         for (const t of (m.torrents || [])) {
           torrents.push({
             title: m.title + ' (' + m.year + ') ' + t.quality,
-            quality: t.quality,
-            resolution: t.quality,
-            size: t.size,
-            sizeBytes: 0,
-            seeds: t.seeds,
-            peers: t.peers,
+            quality: t.quality, resolution: t.quality,
+            size: t.size, sizeBytes: 0,
+            seeds: t.seeds, peers: t.peers,
             magnet: 'magnet:?xt=urn:btih:' + t.hash +
               '&dn=' + encodeURIComponent(m.title + ' ' + t.quality) +
               '&tr=' + encodeURIComponent('udp://tracker.opentrackr.org:1337/announce'),
             torrentUrl: t.url || null,
             infoHash: (t.hash || '').toLowerCase(),
-            source: 'YTS (' + (m.imdb_code || 'unknown imdb id') + ')',
+            source: 'YTS',
           });
         }
       }
       return { torrents: torrents, totalResults: torrents.length, provider: 'yts' };
     },
   },
-
-  // Jackett (self-hosted, Torznab XML).
-  // Needs: var JACKETT_BASE_URL, var JACKETT_INDEXER, secret JACKETT_API_KEY,
-  // and TORRENT_PROVIDER = "jackett".
   jackett: {
     async search(cfg, q, page) {
       if (!cfg.jackettBase) {
@@ -160,9 +132,6 @@ export const torrentAdapters = {
       return { torrents: torrents, totalResults: torrents.length, provider: 'jackett' };
     },
   },
-
-  // Prowlarr (self-hosted). Needs: var PROWLARR_BASE_URL, secret PROWLARR_API_KEY,
-  // and TORRENT_PROVIDER = "prowlarr".
   prowlarr: {
     async search(cfg, q, page) {
       if (!cfg.prowlarrBase) {
@@ -203,40 +172,33 @@ export function getTorrentAdapter(name) {
   return a;
 }
 
-// ---------------- Shared fetch helpers (timeout, retry, 429 backoff) ----------------
+// Browser-like headers for proxy calls (mitigates naive bot filters; IP
+// reputation blocks cannot be fixed from the Worker — hence the direct-first design)
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36',
+  'Accept': 'application/json',
+};
 
-async function fetchJSON(url, retries) {
-  const text = await fetchWithRetry(url, retries == null ? 2 : retries);
+async function fetchJSON(url) {
+  const res = await fetch(url, { headers: BROWSER_HEADERS });
+  if (res.status === 403) {
+    throw Object.assign(new Error(
+      'Provider "' + providerNameFromUrl(url) + '" refused this server-side request (HTTP 403) — it blocks datacenter IPs.'
+    ), { status: 502 });
+  }
+  if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
+  const text = await res.text();
   try { return JSON.parse(text); }
   catch (e) { throw Object.assign(new Error('Upstream returned invalid data'), { status: 502 }); }
 }
-async function fetchText(url, retries) { return fetchWithRetry(url, retries == null ? 2 : retries); }
-
-async function fetchWithRetry(url, retries) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 10000);
-    try {
-      const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'CineWave/1.0' } });
-      clearTimeout(timer);
-      if (res.status === 429) {
-        if (attempt < retries) {
-          const wait = parseInt(res.headers.get('retry-after') || '2', 10);
-          await new Promise(r => setTimeout(r, wait * 1000));
-          continue;
-        }
-        throw Object.assign(new Error('Upstream rate limited — try again shortly'), { status: 429 });
-      }
-      if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
-      return await res.text();
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt === retries || e.status === 429 || e.status === 502) throw e;
-      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
-    }
-  }
+async function fetchText(url) {
+  const res = await fetch(url, { headers: BROWSER_HEADERS });
+  if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
+  return res.text();
 }
-
+function providerNameFromUrl(url) {
+  try { return new URL(url).hostname; } catch (e) { return 'upstream'; }
+}
 function humanSize(bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let i = 0, n = bytes;
