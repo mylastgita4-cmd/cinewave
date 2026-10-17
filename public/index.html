@@ -13,6 +13,7 @@ header{padding:22px 16px;background:#111827;border-bottom:1px solid #263044}
 header p,.info p{color:#aab4c5;font-size:13px}
 main{max-width:1100px;margin:auto;padding:20px 15px}
 .search{width:100%;padding:14px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:12px 0 24px}
+.sectionTitle{font-size:20px;margin:10px 0 14px}
 .movies{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:16px}
 .card{background:#141c2b;border:1px solid #273248;border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s}
 .card:hover{transform:translateY(-3px)}
@@ -29,7 +30,7 @@ main{max-width:1100px;margin:auto;padding:20px 15px}
 footer{text-align:center;padding:25px;border-top:1px solid #273248}
 .status{text-align:center;color:#aab4c5;padding:20px}
 .status.error{color:#f87171}
-.pagination{display:flex;justify-content:center;gap:8px;padding:22px 0}
+.pagination{display:flex;justify-content:center;gap:8px;padding:12px 0 22px}
 .pagination button{padding:8px 14px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
 .pagination button.current{background:#14b8a6;color:#071713;border-color:#14b8a6}
 .pagination button:disabled{opacity:.4;cursor:default}
@@ -53,12 +54,21 @@ footer{text-align:center;padding:25px;border-top:1px solid #273248}
   <p>Discover movies. Watch freely. Enjoy cinema.</p>
 </header>
 <main>
-  <h2>🎬 Explore Movies</h2>
   <input id="search" class="search" placeholder="🔍 Search movies..." oninput="onSearchInput()">
 
-  <div id="movieGrid" class="movies"></div>
-  <div id="status" class="status">Type a movie title to search.</div>
-  <nav id="pagination" class="pagination"></nav>
+  <div id="searchSection" style="display:none">
+    <h2 class="sectionTitle">🔍 Search Results</h2>
+    <div id="movieGrid" class="movies"></div>
+    <div id="status" class="status"></div>
+    <nav id="pagination" class="pagination"></nav>
+  </div>
+
+  <div id="latestSection">
+    <h2 class="sectionTitle">🆕 Latest Movies <span style="font-size:11px;color:#9eabc0">recently added on YTS</span></h2>
+    <div id="latestGrid" class="movies"></div>
+    <div id="latestStatus" class="status">Loading latest movies…</div>
+    <div class="pagination"><button id="latestRefresh" type="button">↻ Refresh</button></div>
+  </div>
 
   <p class="note">CineWave is an independent movie catalog. Films are linked to their official sources. Please check each film's license before redistribution.</p>
 </main>
@@ -82,7 +92,7 @@ footer{text-align:center;padding:25px;border-top:1px solid #273248}
   </div>
 </div>
 
-<!-- Original CineWave player modal (preserved) -->
+<!-- Player modal (preserved) -->
 <div id="playerBox">
   <div class="playerContent">
     <button class="close" onclick="closeMovie()">✕ Close</button>
@@ -98,133 +108,91 @@ footer{text-align:center;padding:25px;border-top:1px solid #273248}
 
 <script>
 const grid=document.getElementById('movieGrid'),statusEl=document.getElementById('status'),pagEl=document.getElementById('pagination');
+const latestGrid=document.getElementById('latestGrid'),latestStatus=document.getElementById('latestStatus');
 const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/></svg>');
 let debounceTimer=null,currentQuery='',currentPage=1,totalPages=1,currentMovie=null;
 
+/* ============ Data layer: browser-direct first, Worker proxy as fallback ============
+   Reason: Apple's iTunes Search API and yts.mx reject datacenter IPs (like Cloudflare
+   Workers egress) with 403. Calls from the visitor's own device use a normal
+   consumer IP and succeed without any API key. */
+
+async function fetchJSON(url){
+  const res=await fetch(url,{headers:{'Accept':'application/json'}});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const text=await res.text();
+  try{return JSON.parse(text)}
+  catch(e){throw new Error('Invalid response from provider')}
+}
+
+// iTunes Search API (keyless). Fetched from the visitor's device.
+async function searchMoviesDirect(q){
+  const data=await fetchJSON('https://itunes.apple.com/search?term='+encodeURIComponent(q)
+    +'&media=movie&entity=movie&limit=200&country=US');
+  return normalizeItunes(data.results||[]);
+}
+
+// YTS API (keyless, documented at yts.mx/api) — latest movies, sorted by date added.
+async function latestMoviesDirect(){
+  const data=await fetchJSON('https://yts.mx/api/v2/list_movies.json?limit=20&sort_by=date_added&order_by=desc');
+  return normalizeYts((data&&data.data&&data.data.movies)||[]);
+}
+
+async function searchMoviesViaWorker(q,page){
+  const res=await fetch('/api/movies?'+new URLSearchParams({q:q,page:String(page)}));
+  let body=null;try{body=await res.json()}catch(e){}
+  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
+  return body;
+}
+
+async function latestViaWorker(){
+  const res=await fetch('/api/latest');
+  let body=null;try{body=await res.json()}catch(e){}
+  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
+  return body.results||[];
+}
+
+// Normalize both sources into one card shape
+function normalizeItunes(list){
+  return list.map(m=>({
+    id:m.trackId!=null?String(m.trackId):m.trackName,
+    title:m.trackName,
+    year:(m.releaseDate||'').slice(0,4),
+    overview:m.longDescription||m.shortDescription||'',
+    genres:m.primaryGenreName?[m.primaryGenreName]:[],
+    poster:m.artworkUrl100?m.artworkUrl100.replace('/100x100bb.jpg','/600x600bb.jpg'):null,
+    trailerUrl:m.previewUrl||null,
+    storeUrl:m.trackViewUrl||null,
+    artist:m.artistName||null,
+    source:'iTunes',
+  }));
+}
+function normalizeYts(list){
+  return list.map(m=>({
+    id:m.imdb_code||String(m.id),
+    title:m.title,
+    year:m.year?String(m.year):'',
+    overview:m.synopsis||m.description_full||'',
+    genres:m.genres||[],
+    poster:m.medium_cover_image||null,
+    rating:m.rating,
+    trailerUrl:null,
+    storeUrl:null,
+    artist:null,
+    source:'YTS',
+    _ytsTitle:m.title,_ytsYear:m.year,
+  }));
+}
+
+/* ============ Search flow ============ */
 function onSearchInput(){
   clearTimeout(debounceTimer);
   debounceTimer=setTimeout(function(){
     currentQuery=document.getElementById('search').value.trim();
     currentPage=1;
-    loadMovies();
-  },450);
-}
-
-async function api(path,params){
-  const res=await fetch(path+'?'+new URLSearchParams(params));
-  let body=null;
-  try{body=await res.json()}catch(e){}
-  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
-  return body;
-}
-
-async function loadMovies(){
-  if(!currentQuery){grid.innerHTML='';statusEl.textContent='Type a movie title to search.';statusEl.className='status';pagEl.innerHTML='';return;}
-  statusEl.className='status';statusEl.textContent='Searching…';grid.innerHTML='';pagEl.innerHTML='';
-  try{
-    const data=await api('/api/movies',{q:currentQuery,page:currentPage});
-    totalPages=data.totalPages||1;
-    if(!data.results||!data.results.length){statusEl.textContent='No movies found.';return;}
-    statusEl.textContent=data.totalResults+' results · page '+data.page+' of '+totalPages+' · source: '+esc(data.source||'');
-    for(const m of data.results)grid.appendChild(movieCard(m));
-    renderPagination();
-  }catch(e){statusEl.className='status error';statusEl.textContent='Error: '+e.message;}
-}
-
-function movieCard(m){
-  const card=document.createElement('article');card.className='card';
-  const posterHtml=m.poster
-    ?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">'
-    :'<div class="poster">🎬</div>';
-  card.innerHTML=posterHtml
-    +'<div class="info"><h3>'+esc(m.title)+'</h3><p>'+esc(m.year||'')+(m.genres&&m.genres.length?' · '+esc(m.genres.join(', ')):'')+'</p>'
-    +(m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')
-    +'<button class="btn download" type="button">⬇ Torrents</button></div>';
-  card.addEventListener('click',function(){openDetail(m)});
-  return card;
-}
-
-function renderPagination(){
-  function add(label,page,disabled,current){
-    const b=document.createElement('button');b.textContent=label;
-    if(current)b.className='current';
-    b.disabled=!!disabled;
-    b.addEventListener('click',function(){currentPage=page;loadMovies();window.scrollTo(0,0)});
-    pagEl.appendChild(b);
-  }
-  add('‹ Prev',currentPage-1,currentPage<=1);
-  const start=Math.max(1,currentPage-2),end=Math.min(totalPages,start+4);
-  for(let p=start;p<=end;p++)add(String(p),p,false,p===currentPage);
-  add('Next ›',currentPage+1,currentPage>=totalPages);
-}
-
-function openDetail(m){
-  currentMovie=m;
-  document.getElementById('detailTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
-  let html='';
-  if(m.poster)html+='<img src="'+esc(m.poster)+'" alt="" style="width:120px;border-radius:8px;float:left;margin:0 12px 8px 0">';
-  html+='<p>'+(m.genres&&m.genres.length?esc(m.genres.join(', '))+' · ':'')+esc(m.year||'')+'</p>';
-  if(m.overview)html+='<p>'+esc(m.overview)+'</p>';
-  if(m.artist)html+='<p class="src">Starring/Artist: '+esc(m.artist)+'</p>';
-  if(m.trailerUrl)html+='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Trailer</button>';
-  if(m.storeUrl)html+='<a class="btn download" href="'+esc(m.storeUrl)+'" target="_blank" rel="noopener">ⓘ View on Store</a>';
-  html+='<div style="clear:both"></div>';
-  document.getElementById('detailBody').innerHTML=html;
-  document.getElementById('detailBox').style.display='block';
-  document.body.style.overflow='hidden';
-}
-function closeDetail(){document.getElementById('detailBox').style.display='none';document.body.style.overflow='';}
-document.getElementById('detailTorrentsBtn').addEventListener('click',function(){
-  closeDetail();
-  if(currentMovie)openTorrents(currentMovie);
-});
-
-function playTrailer(){
-  if(!currentMovie||!currentMovie.trailerUrl)return;
-  closeDetail();
-  const v=document.getElementById('moviePlayer');
-  document.getElementById('playerTitle').textContent=(currentMovie.title||'Movie')+' · Trailer';
-  v.innerHTML='';
-  v.src=currentMovie.trailerUrl;
-  document.getElementById('playerBox').style.display='block';
-  document.body.style.overflow='hidden';
-  v.play().catch(function(){});
-}
-
-async function openTorrents(m){
-  document.getElementById('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
-  const list=document.getElementById('torrentList');
-  list.innerHTML='<p class="status">Searching torrents…</p>';
-  document.getElementById('torrentBox').style.display='block';
-  document.body.style.overflow='hidden';
-  try{
-    const data=await api('/api/torrents',{q:m.title,year:m.year||''});
-    const torrents=data.torrents||[];
-    if(!torrents.length){list.innerHTML='<p class="status">No torrents found for this movie.</p>';return;}
-    list.innerHTML='';
-    for(const t of torrents.slice(0,15)){
-      const item=document.createElement('div');item.className='torrentItem';
-      const dlBtn=t.torrentUrl
-        ?'<a class="btn download" href="'+esc(t.torrentUrl)+'" target="_blank" rel="noopener">⬇ Download Torrent</a>'
-        :'<a class="btn watch" href="'+esc(t.magnet||'#')+'" rel="noopener">🧲 Magnet Link</a>';
-      item.innerHTML='<div class="t-title">'+esc(t.title)+'</div>'
-        +'<div class="t-meta">'+(t.resolution?'<span class="badge">'+esc(t.resolution)+'</span>':'')
-        +'<span>'+esc(t.size||'')+'</span><span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span></div>'
-        +(t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')
-        +dlBtn;
-      list.appendChild(item);
-    }
-  }catch(e){list.innerHTML='<p class="status">Error: '+esc(e.message)+'</p>';}
-}
-function closeTorrents(){document.getElementById('torrentBox').style.display='none';document.body.style.overflow='';}
-
-/* Original CineWave player functions (preserved) */
-function closeMovie(){
-  const video=document.getElementById('moviePlayer');
-  video.pause();video.currentTime=0;video.removeAttribute('src');video.load();
-  document.getElementById('playerBox').style.display='none';document.body.style.overflow='';
-}
-const esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
-</script>
-</body>
-</html>
+    if(currentQuery){
+      document.getElementById('searchSection').style.display='block';
+      loadMovies();
+    }else{
+      document.getElementById('searchSection').style.display='none';
+      grid.innerHTML='';statusEl.textContent='';pagEl.innerHTML
