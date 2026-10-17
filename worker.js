@@ -10,16 +10,14 @@ export default {
     };
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors });
 
-    let cfg;
-    try {
-      cfg = readConfig(env);
-    } catch (e) {
-      return json({ error: e.message || 'Bad configuration' }, 500, cors);
-    }
+    const cfg = readConfig(env);
 
     try {
       if (url.pathname === '/api/movies') {
         return await withLimits(env, cfg, cors, () => handleMovies(env, cfg, url, cors));
+      }
+      if (url.pathname === '/api/latest') {
+        return await withLimits(env, cfg, cors, () => handleLatest(env, cfg, cors));
       }
       if (url.pathname === '/api/torrents') {
         return await withLimits(env, cfg, cors, () => handleTorrents(env, cfg, url, cors));
@@ -30,36 +28,28 @@ export default {
           metadataProvider: cfg.metadataProvider,
           torrentProvider: cfg.torrentProvider,
           kvBound: !!env.CACHE,
-          tmdbSecretPresent: !!env.TMDB_API_KEY,
         }, 200, cors);
       }
       return new Response('Not found', { status: 404, headers: cors });
     } catch (e) {
-      console.error('Worker error:', e && e.message, e && e.stack);
+      console.error('Worker error:', e && e.message);
       return json({ error: e.message || 'Internal error' }, e.status || 500, cors);
     }
   },
 };
 
 function readConfig(env) {
-  const metadataProvider = env.METADATA_PROVIDER || 'itunes';
-  // Guard: if config still says tmdb but no secret exists, fall back to keyless
-  // provider instead of erroring on every search.
-  if (metadataProvider === 'tmdb' && !env.TMDB_API_KEY) {
-    console.warn('METADATA_PROVIDER is "tmdb" but TMDB_API_KEY missing; falling back to itunes.');
-    return buildConfig(env, 'itunes');
-  }
-  return buildConfig(env, metadataProvider);
-}
-
-function buildConfig(env, metadataProvider) {
   return {
-    metadataProvider: metadataProvider,
+    // Frontend normally calls providers directly from the visitor's device;
+    // these Worker routes are the cached fallback. 'itunes' kept as name for
+    // the proxy adapter; set METADATA_PROVIDER in wrangler.toml if preferred.
+    metadataProvider: env.METADATA_PROVIDER || 'itunes',
     torrentProvider: env.TORRENT_PROVIDER || 'yts',
     tmdbApiKey: env.TMDB_API_KEY || '',
     imageBase: env.IMAGE_BASE || 'https://image.tmdb.org/t/p/w500',
     cacheTtl: parseInt(env.CACHE_TTL || '3600', 10),
     torrentTtl: parseInt(env.TORRENT_CACHE_TTL || '900', 10),
+    latestTtl: parseInt(env.LATEST_CACHE_TTL || '1800', 10),
     rlMax: parseInt(env.RATE_LIMIT_MAX || '30', 10),
     rlWindow: parseInt(env.RATE_LIMIT_WINDOW || '60', 10),
     jackettBase: env.JACKETT_BASE_URL || '',
@@ -72,9 +62,8 @@ function buildConfig(env, metadataProvider) {
 
 async function withLimits(env, cfg, cors, fn) {
   if (env.CACHE) {
-    const ip = 'global'; // per-IP needs the request; kept simple and KV-efficient
     const bucket = Math.floor(Date.now() / 1000 / cfg.rlWindow);
-    const key = 'rl:' + ip + ':' + bucket;
+    const key = 'rl:global:' + bucket;
     const count = parseInt((await env.CACHE.get(key)) || '0', 10) + 1;
     await env.CACHE.put(key, String(count), { expirationTtl: cfg.rlWindow });
     if (count > cfg.rlMax) {
@@ -89,37 +78,58 @@ async function handleMovies(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
   if (!q) return json({ error: 'Missing search query' }, 400, cors);
-  if (q.length > 100) return json({ error: 'Query too long' }, 400, cors);
 
-  // Cache the FULL result window once, then slice pages from it.
-  // (iTunes Search API has no server-side pagination parameter.)
+  // iTunes Search API has no pagination parameter: fetch full window once, cache, slice.
   const baseKey = 'movies:' + cfg.metadataProvider + ':' + q.toLowerCase();
   let full = await cacheGet(env, baseKey);
   if (!full) {
     const adapter = getMetadataAdapter(cfg.metadataProvider);
-    full = await adapter.search(cfg, q, 1); // adapters fetch their full window
+    full = await adapter.search(cfg, q, 1);
     await cachePut(env, baseKey, full, cfg.cacheTtl);
   }
 
   const perPage = full.perPage || 20;
   const totalPages = full.totalPages || 1;
-
-  if (page > totalPages) {
-    return json({ page: page, perPage: perPage, totalPages: totalPages,
-      totalResults: full.totalResults, results: [], source: full.source }, 200, cors);
-  }
-
   const start = (page - 1) * perPage;
-  const sliced = (full.results || []).slice(start, start + perPage);
 
   return json({
     page: page,
     perPage: perPage,
     totalPages: totalPages,
     totalResults: full.totalResults,
-    results: sliced,
+    results: (full.results || []).slice(start, start + perPage),
     source: full.source,
   }, 200, cors);
+}
+
+// Latest movies via YTS documented parameter sort_by=date_added (keyless).
+async function handleLatest(env, cfg, cors) {
+  const key = 'latest:' + cfg.torrentProvider;
+  const cached = await cacheGet(env, key);
+  if (cached) return json(cached, 200, cors);
+
+  const data = await fetchJSON(
+    'https://yts.mx/api/v2/list_movies.json?limit=20&sort_by=date_added&order_by=desc'
+  );
+  const movies = (data && data.data && data.data.movies) || [];
+  const results = movies.map(m => ({
+    id: m.imdb_code || String(m.id),
+    title: m.title,
+    year: m.year ? String(m.year) : '',
+    overview: m.synopsis || m.description_full || '',
+    genres: m.genres || [],
+    poster: m.medium_cover_image || null,
+    rating: m.rating,
+    trailerUrl: null,
+    storeUrl: null,
+    artist: null,
+    source: 'YTS',
+    _ytsTitle: m.title,
+    _ytsYear: m.year,
+  }));
+  const payload = { results: results, totalResults: results.length, source: 'yts' };
+  await cachePut(env, key, payload, cfg.latestTtl);
+  return json(payload, 200, cors);
 }
 
 async function handleTorrents(env, cfg, url, cors) {
@@ -135,7 +145,6 @@ async function handleTorrents(env, cfg, url, cors) {
   const adapter = getTorrentAdapter(cfg.torrentProvider);
   const data = await adapter.search(cfg, query, 1);
 
-  // Duplicate detection: dedupe by infohash, fallback to normalized title+size
   const seen = new Set();
   const torrents = (data.torrents || []).filter(t => {
     const k = (t.infoHash ||
@@ -150,7 +159,7 @@ async function handleTorrents(env, cfg, url, cors) {
   return json(payload, 200, cors);
 }
 
-// ---- Caching (KV if bound, otherwise in-memory per isolate) ----
+// ---- Caching: uses the existing CACHE KV binding; falls back to in-memory ----
 const mem = new Map();
 async function cacheGet(env, key) {
   const hit = mem.get(key);
@@ -171,6 +180,26 @@ async function cachePut(env, key, value, ttl) {
     await env.CACHE.put('cw:' + key, JSON.stringify({ value: value, exp: exp }),
       { expirationTtl: ttl });
   }
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url, {
+    headers: {
+      // Browser-like UA improves odds against provider bot filters on proxy calls
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36',
+      'Accept': 'application/json',
+    },
+  });
+  if (res.status === 403) {
+    throw Object.assign(new Error(
+      'The upstream provider refused this server-side request (HTTP 403). ' +
+      'This provider blocks datacenter IPs — the site will use browser-direct requests instead.'
+    ), { status: 502 });
+  }
+  if (!res.ok) throw Object.assign(new Error('Upstream returned ' + res.status), { status: 502 });
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch (e) { throw Object.assign(new Error('Upstream returned invalid data'), { status: 502 }); }
 }
 
 function json(obj, status, extra, more) {
