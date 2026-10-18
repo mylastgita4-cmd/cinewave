@@ -1,4 +1,3 @@
-
 /*
  * CineX Zone - Metadata and Torrent Adapters
  *
@@ -10,6 +9,8 @@
  *   - YTS
  *   - Jackett
  *   - Prowlarr
+ *   - TPB (apibay.org, keyless, magnet-only)
+ *   - torrents-csv (keyless, magnet-only)
  *
  * Required Worker bindings/secrets:
  *   TMDB_API_KEY
@@ -19,7 +20,9 @@
  *   PROWLARR_BASE_URL
  *   PROWLARR_API_KEY
  *
- * TORRENT_PROVIDER selects the torrent provider.
+ * TORRENT_PROVIDER selects the primary torrent provider.
+ * Keyless fallbacks (tpb, torrentscsv) are used automatically
+ * by the worker when the primary provider fails.
  * API keys must remain server-side.
  */
 
@@ -232,6 +235,156 @@ export const torrentAdapters = {
   },
 
   // ----------------------------------------------------------
+  // TPB (apibay.org)
+  // The Pirate Bay's own JSON backend. Keyless.
+  // Provides info hashes only - magnet links are built here
+  // the same way thepiratebay.org builds them in browsers.
+  // No .torrent file URLs are available from this source.
+  // ----------------------------------------------------------
+
+  tpb: {
+    async search(cfg, q, page = 1) {
+      const url =
+        'https://apibay.org/q.php?' +
+        new URLSearchParams({
+          q,
+          cat: '207', // HD Movies category
+        }).toString();
+
+      const data = await fetchJSON(url);
+
+      // apibay returns [{name:"no results"}] when empty.
+      const list = Array.isArray(data)
+        ? data.filter(r => r && r.info_hash && r.name)
+        : [];
+
+      const torrents = list.map(r => {
+        const name = String(r.name || '');
+        const resolution =
+          (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
+
+        const sizeBytes =
+          Number(r.size) || 0;
+
+        return {
+          title: name,
+          movieTitle: name
+            .replace(/\[[^\]]*\]/g, ' ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(
+              /\.(mkv|mp4|avi|webm|x264|x265|h264|h265|hevc|bluray|webrip|web[- ]?dl|bdrip|dvdrip|hdrip|brrip|720p|1080p|2160p|480p|4k|yify|rarbg|ettv|eztv|aac|aac2|dts|ddp?5\.?1|5\.1|aac2\.0|hdtv|xvid|it|hindi|dual[\s-]*audio|esubs?|sub[\s-]*\w+|5\.1\s*hindi|[\s.-]+)+/gi,
+              ' '
+            )
+            .replace(/\s+/g, ' ')
+            .trim(),
+
+          year: extractYear(name) || null,
+
+          quality: resolution,
+          resolution,
+
+          size: sizeBytes
+            ? humanSize(sizeBytes)
+            : '',
+
+          sizeBytes,
+
+          seeds: Number(r.seeders) || 0,
+          peers: Number(r.leechers) || 0,
+
+          magnet: buildMagnet(r.info_hash, name),
+
+          torrentUrl: null,
+          infoHash:
+            String(r.info_hash).toLowerCase(),
+
+          source: 'ThePirateBay',
+        };
+      });
+
+      return {
+        torrents,
+        totalResults: torrents.length,
+        provider: 'tpb',
+      };
+    },
+  },
+
+  // ----------------------------------------------------------
+  // torrents-csv.com
+  // Community-maintained, DHT-sourced torrent index.
+  // Keyless public JSON API. Provides info hashes; magnet
+  // links are built locally. No .torrent file URLs.
+  // ----------------------------------------------------------
+
+  torrentscsv: {
+    async search(cfg, q, page = 1) {
+      const url =
+        'https://torrents-csv.com/service/search?' +
+        new URLSearchParams({
+          q,
+          size: '100',
+        }).toString();
+
+      const data = await fetchJSON(url);
+
+      const list = Array.isArray(data?.results)
+        ? data.results
+        : [];
+
+      const torrents = list.map(r => {
+        const name = String(r.name || '');
+        const resolution =
+          (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
+
+        const sizeBytes =
+          Number(r.size_bytes) || 0;
+
+        return {
+          title: name,
+          movieTitle: name
+            .replace(/\[[^\]]*\]/g, ' ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(
+              /\.(mkv|mp4|avi|webm|x264|x265|h264|h265|hevc|bluray|webrip|web[- ]?dl|bdrip|dvdrip|hdrip|brrip|720p|1080p|2160p|480p|4k|yify|rarbg|ettv|eztv|aac|aac2|dts|ddp?5\.?1|5\.1|hdtv|xvid|[\s.-]+)+/gi,
+              ' '
+            )
+            .replace(/\s+/g, ' ')
+            .trim(),
+
+          year: extractYear(name) || null,
+
+          quality: resolution,
+          resolution,
+
+          size: sizeBytes
+            ? humanSize(sizeBytes)
+            : '',
+
+          sizeBytes,
+
+          seeds: Number(r.seeders) || 0,
+          peers: Number(r.leechers) || 0,
+
+          magnet: buildMagnet(r.infohash, name),
+
+          torrentUrl: null,
+          infoHash:
+            String(r.infohash || '').toLowerCase(),
+
+          source: 'torrents-csv',
+        };
+      });
+
+      return {
+        torrents,
+        totalResults: torrents.length,
+        provider: 'torrentscsv',
+      };
+    },
+  },
+
+  // ----------------------------------------------------------
   // JACKETT
   // Requires a reachable, configured Jackett instance.
   // ----------------------------------------------------------
@@ -423,9 +576,6 @@ export const torrentAdapters = {
         apikey: cfg.prowlarrKey,
       });
 
-      // Prowlarr search API commonly returns an array.
-      // The API does not guarantee that limit/offset are
-      // supported as pagination parameters.
       const data = await fetchJSON(
         base + '/api/v1/search?' +
         params.toString()
@@ -532,6 +682,46 @@ export function getTorrentAdapter(name) {
   }
 
   return adapter;
+}
+
+// ============================================================
+// TORRENT HELPERS
+// ============================================================
+
+const TRACKERS = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.demonii.com:1337/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'wss://tracker.openwebtorrent.com',
+];
+
+export function buildMagnet(infoHash, displayName) {
+  const hash = String(infoHash || '').toLowerCase();
+
+  if (!/^[a-f0-9]{40}$/.test(hash) && !/^[a-f0-9]{32}$/.test(hash)) {
+    return null;
+  }
+
+  const magnetParams = new URLSearchParams({
+    xt: 'urn:btih:' + hash,
+    dn: String(displayName || 'Movie').slice(0, 200),
+  });
+
+  for (const tr of TRACKERS) {
+    magnetParams.append('tr', tr);
+  }
+
+  return 'magnet:?' + magnetParams.toString();
+}
+
+function extractYear(value) {
+  const match = /\b(19\d{2}|20\d{2})\b/
+    .exec(String(value || ''));
+
+  return match
+    ? parseInt(match[1], 10)
+    : 0;
 }
 
 // ============================================================
