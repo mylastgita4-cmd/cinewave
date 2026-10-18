@@ -4,6 +4,7 @@ import { getMetadataAdapter, getTorrentAdapter } from './adapters.js';
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
     const cors = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,OPTIONS',
@@ -17,7 +18,7 @@ export default {
     const cfg = readConfig(env);
 
     try {
-      // Homepage movie data
+      // Homepage and latest movies
       if (
         url.pathname === '/api/home' ||
         url.pathname === '/api/latest'
@@ -62,14 +63,25 @@ export default {
             : 'itunes-keyless',
           kvBound: !!env.CACHE,
           torrentProvider: cfg.torrentProvider,
+          torrentTimeoutMs: cfg.torrentTimeoutMs,
+          jackettConfigured: !!(
+            cfg.jackettBase && cfg.jackettKey
+          ),
+          prowlarrConfigured: !!(
+            cfg.prowlarrBase && cfg.prowlarrKey
+          ),
         }, 200, cors);
       }
 
-      // Serve the website's static assets and homepage
+      // Serve the existing website and static assets
       return env.ASSETS.fetch(request);
 
     } catch (e) {
-      console.error('Worker error:', e && e.message);
+      console.error(
+        'Worker error:',
+        e && e.message
+      );
+
       return json({
         error: e.message || 'Internal error',
       }, e.status || 500, cors);
@@ -77,44 +89,89 @@ export default {
   },
 };
 
+// ================= Configuration =================
+
 function readConfig(env) {
   return {
     tmdbApiKey: env.TMDB_API_KEY || '',
+
     imageBase:
       env.IMAGE_BASE ||
       'https://image.tmdb.org/t/p/w500',
-    cacheTtl: parseInt(env.CACHE_TTL || '3600', 10),
+
+    cacheTtl: parseInt(
+      env.CACHE_TTL || '3600', 10
+    ),
+
     torrentTtl: parseInt(
       env.TORRENT_CACHE_TTL || '900', 10
     ),
+
     homeTtl: parseInt(
-      env.HOME_CACHE_TTL || '1800', 10
+      env.HOME_CACHE_TTL ||
+      env.LATEST_CACHE_TTL ||
+      '1800', 10
     ),
-    rlMax: parseInt(env.RATE_LIMIT_MAX || '60', 10),
+
+    // Preserve the existing default rate limit.
+    rlMax: parseInt(
+      env.RATE_LIMIT_MAX || '60', 10
+    ),
+
     rlWindow: parseInt(
       env.RATE_LIMIT_WINDOW || '60', 10
     ),
-    torrentProvider: env.TORRENT_PROVIDER || 'yts',
+
+    torrentProvider:
+      env.TORRENT_PROVIDER || 'yts',
+
+    torrentTimeoutMs: parseInt(
+      env.TORRENT_TIMEOUT_MS || '12000', 10
+    ),
+
+    jackettBase:
+      env.JACKETT_BASE_URL || '',
+
+    jackettKey:
+      env.JACKETT_API_KEY || '',
+
+    jackettIndexer:
+      env.JACKETT_INDEXER || 'all',
+
+    prowlarrBase:
+      env.PROWLARR_BASE_URL || '',
+
+    prowlarrKey:
+      env.PROWLARR_API_KEY || '',
   };
 }
+
+// ================= Rate limiting =================
 
 async function withLimits(env, cfg, cors, fn) {
   if (env.CACHE) {
     const bucket = Math.floor(
       Date.now() / 1000 / cfg.rlWindow
     );
-    const key = 'rl:global:' + bucket;
-    const count = parseInt(
-      (await env.CACHE.get(key)) || '0', 10
-    ) + 1;
 
-    await env.CACHE.put(key, String(count), {
-      expirationTtl: cfg.rlWindow,
-    });
+    const key = 'rl:global:' + bucket;
+
+    const count =
+      parseInt(
+        (await env.CACHE.get(key)) || '0',
+        10
+      ) + 1;
+
+    await env.CACHE.put(
+      key,
+      String(count),
+      { expirationTtl: cfg.rlWindow }
+    );
 
     if (count > cfg.rlMax) {
       return json({
-        error: 'Rate limit exceeded. Please wait a minute.',
+        error:
+          'Rate limit exceeded. Please wait a minute.',
       }, 429, cors, {
         'Retry-After': String(cfg.rlWindow),
       });
@@ -124,8 +181,8 @@ async function withLimits(env, cfg, cors, fn) {
   return fn();
 }
 
-// Homepage: TMDB now-playing + popular.
-// Without a TMDB key, use Apple's public movie RSS feed.
+// ================= Homepage =================
+
 async function handleHome(env, cfg, cors) {
   if (cfg.tmdbApiKey) {
     const [latest, popular] = await Promise.all([
@@ -155,41 +212,50 @@ async function handleHome(env, cfg, cors) {
         'https://itunes.apple.com/us/rss/topmovies/limit=50/json'
       );
 
-      const entries = (
-        (data || {}).feed || {}
-      ).entry || [];
+      const entries =
+        (((data || {}).feed || {}).entry || []);
 
       const movies = (
-        Array.isArray(entries) ? entries : [entries]
+        Array.isArray(entries)
+          ? entries
+          : [entries]
       ).map(e => ({
         id: e.id && e.id.attributes
           ? e.id.attributes['im:id']
           : (e.id && e.id.label) || '',
+
         title: e['im:name']
           ? e['im:name'].label
           : '',
+
         year: e['im:releaseDate']
           ? (
               e['im:releaseDate'].label || ''
             ).slice(0, 4)
           : '',
+
         releaseDate: e['im:releaseDate']
           ? e['im:releaseDate'].label
           : '',
+
         overview: e.summary
           ? e.summary.label
           : '',
+
         poster: e['im:image']
           ? e['im:image'][
               e['im:image'].length - 1
             ].label
           : null,
+
         rating: null,
+
         genres: e.category
           ? [
               e.category.attributes?.label || ''
             ]
           : [],
+
         genreIds: [],
         trailerUrl: null,
         storeUrl: null,
@@ -204,6 +270,7 @@ async function handleHome(env, cfg, cors) {
       await cachePut(
         env, key, cached, cfg.homeTtl
       );
+
     } catch (e) {
       cached = {
         movies: [],
@@ -216,7 +283,8 @@ async function handleHome(env, cfg, cors) {
   return json({
     mode: 'itunes-keyless',
     latest: cached.movies || [],
-    latestSource: cached.source || 'itunes-keyless',
+    latestSource:
+      cached.source || 'itunes-keyless',
     popular: [],
     popularSource: '',
     notice: cached.error
@@ -226,7 +294,9 @@ async function handleHome(env, cfg, cors) {
   }, 200, cors);
 }
 
-async function tmdbSection(env, cfg, section, ttl) {
+async function tmdbSection(
+  env, cfg, section, ttl
+) {
   const key = 'home:tmdb:' + section;
   const cached = await cacheGet(env, key);
 
@@ -252,9 +322,11 @@ async function tmdbSection(env, cfg, section, ttl) {
       year: (m.release_date || '').slice(0, 4),
       releaseDate: m.release_date || '',
       overview: m.overview || '',
+
       poster: m.poster_path
         ? cfg.imageBase + m.poster_path
         : null,
+
       rating: m.vote_average,
       genres: [],
       genreIds: m.genre_ids || [],
@@ -271,6 +343,7 @@ async function tmdbSection(env, cfg, section, ttl) {
       movies,
       source: 'tmdb',
     };
+
   } catch (e) {
     return {
       movies: [],
@@ -279,7 +352,8 @@ async function tmdbSection(env, cfg, section, ttl) {
   }
 }
 
-// Movie search
+// ================= Movie search =================
+
 async function handleMovies(env, cfg, url, cors) {
   const q = (
     url.searchParams.get('q') || ''
@@ -295,16 +369,14 @@ async function handleMovies(env, cfg, url, cors) {
   if (!q) {
     return json(
       { error: 'Missing search query' },
-      400,
-      cors
+      400, cors
     );
   }
 
   if (q.length > 100) {
     return json(
       { error: 'Query too long' },
-      400,
-      cors
+      400, cors
     );
   }
 
@@ -314,14 +386,18 @@ async function handleMovies(env, cfg, url, cors) {
 
   const adapter = getMetadataAdapter(provider);
 
-  const key = 'movies:' + provider + ':' +
+  const key =
+    'movies:' + provider + ':' +
     q.toLowerCase() +
     (provider === 'tmdb' ? ':' + page : '');
 
   let payload = await cacheGet(env, key);
 
   if (!payload) {
-    payload = await adapter.search(cfg, q, page);
+    payload = await adapter.search(
+      cfg, q, page
+    );
+
     await cachePut(
       env, key, payload, cfg.cacheTtl
     );
@@ -346,27 +422,38 @@ async function handleMovies(env, cfg, url, cors) {
   }, 200, cors);
 }
 
-// Torrent search
+// ================= Torrent search =================
+
 async function handleTorrents(env, cfg, url, cors) {
   const q = (
     url.searchParams.get('q') || ''
   ).trim();
 
-  const year = url.searchParams.get('year') || '';
+  const year = parseInt(
+    url.searchParams.get('year') || '0',
+    10
+  ) || 0;
 
   if (!q) {
     return json(
       { error: 'Missing query' },
-      400,
-      cors
+      400, cors
     );
   }
 
-  const query = year ? q + ' ' + year : q;
+  if (q.length > 200) {
+    return json(
+      { error: 'Query too long' },
+      400, cors
+    );
+  }
 
-  const key = 'torrents:' +
+  const normTitle = normalizeTitle(q);
+
+  const key =
+    'torrents:' +
     cfg.torrentProvider + ':' +
-    query.toLowerCase();
+    normTitle + ':' + year;
 
   const cached = await cacheGet(env, key);
 
@@ -374,68 +461,159 @@ async function handleTorrents(env, cfg, url, cors) {
     return json(cached, 200, cors);
   }
 
+  let data;
+
   try {
     const adapter = getTorrentAdapter(
       cfg.torrentProvider
     );
 
-    const data = await adapter.search(
-      cfg, query, 1
+    // Search by title first. Match the year below.
+    data = await withTimeout(
+      adapter.search(cfg, q, 1),
+      cfg.torrentTimeoutMs
     );
 
-    const seen = new Set();
-
-    const torrents = (data.torrents || [])
-      .filter(t => {
-        const k = (
-          t.infoHash ||
-          (
-            (t.title || '')
-              .toLowerCase()
-              .replace(/\W+/g, '') +
-            '|' + (t.sizeBytes || t.size)
-          )
-        ).toLowerCase();
-
-        if (seen.has(k)) {
-          return false;
-        }
-
-        seen.add(k);
-        return true;
-      })
-      .sort(
-        (a, b) => (b.seeds || 0) - (a.seeds || 0)
-      );
-
-    const payload = {
-      query,
-      torrents,
-      totalResults: torrents.length,
-      provider: cfg.torrentProvider,
-    };
-
-    await cachePut(
-      env, key, payload, cfg.torrentTtl
-    );
-
-    return json(payload, 200, cors);
   } catch (e) {
-    return json({
-      query,
+    const payload = {
+      query: q,
+      year,
       torrents: [],
       totalResults: 0,
+      provider: cfg.torrentProvider,
       providerError:
         'Torrent index temporarily unavailable (' +
         e.message + ')',
-    }, 200, cors);
+    };
+
+    // Keep temporary errors cached only briefly.
+    await cachePut(env, key, payload, 120);
+
+    return json(payload, 200, cors);
   }
+
+  // Remove duplicates and match the movie title/year.
+  const seen = new Set();
+
+  const torrents = (
+    data.torrents || []
+  ).filter(t => {
+    const title = String(t.title || '');
+
+    const uniqueKey = (
+      t.infoHash ||
+      title.toLowerCase().replace(/\W+/g, '') +
+      '|' + (t.sizeBytes || t.size || '')
+    ).toLowerCase();
+
+    if (seen.has(uniqueKey)) {
+      return false;
+    }
+
+    seen.add(uniqueKey);
+
+    // Require the normalized movie title to match.
+    if (
+      normTitle &&
+      !normalizedContains(title, normTitle)
+    ) {
+      return false;
+    }
+
+    // Allow a one-year difference for international releases.
+    if (year) {
+      const releaseYear = extractYear(title);
+
+      if (
+        releaseYear &&
+        Math.abs(releaseYear - year) > 1
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  // Sort by quality first, then by seeders.
+  torrents.sort((a, b) =>
+    qualityRank(b.resolution) -
+      qualityRank(a.resolution) ||
+    ((b.seeds || 0) - (a.seeds || 0))
+  );
+
+  const payload = {
+    query: q,
+    year,
+    torrents,
+    totalResults: torrents.length,
+    provider: cfg.torrentProvider,
+  };
+
+  await cachePut(
+    env, key, payload, cfg.torrentTtl
+  );
+
+  return json(payload, 200, cors);
 }
 
-// Movie trailer from TMDB
+function normalizeTitle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizedContains(haystack, needle) {
+  return normalizeTitle(haystack)
+    .includes(needle);
+}
+
+function extractYear(title) {
+  const match = /\b(19\d{2}|20\d{2})\b/
+    .exec(String(title || ''));
+
+  return match
+    ? parseInt(match[1], 10)
+    : 0;
+}
+
+function qualityRank(resolution) {
+  const r = String(resolution || '');
+
+  if (/2160|4k/i.test(r)) return 4;
+  if (/1080/i.test(r)) return 3;
+  if (/720/i.test(r)) return 2;
+  if (/480/i.test(r)) return 1;
+
+  return 0;
+}
+
+async function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(
+          new Error(
+            'Timed out after ' + (ms / 1000) + 's'
+          )
+        ),
+        ms
+      );
+    }),
+  ]);
+}
+
+// ================= Movie trailer =================
+
 async function handleTrailer(env, cfg, url, cors) {
   if (!cfg.tmdbApiKey) {
-    return json({ trailerUrl: null }, 200, cors);
+    return json(
+      { trailerUrl: null },
+      200, cors
+    );
   }
 
   const id = (
@@ -443,7 +621,10 @@ async function handleTrailer(env, cfg, url, cors) {
   ).trim();
 
   if (!/^\d+$/.test(id)) {
-    return json({ trailerUrl: null }, 200, cors);
+    return json(
+      { trailerUrl: null },
+      200, cors
+    );
   }
 
   const key = 'trailer:' + id;
@@ -475,7 +656,9 @@ async function handleTrailer(env, cfg, url, cors) {
         v.site === 'YouTube' &&
         v.type === 'Trailer'
       ) ||
-      vids.find(v => v.site === 'YouTube');
+      vids.find(v =>
+        v.site === 'YouTube'
+      );
 
     if (yt) {
       payload = {
@@ -484,6 +667,7 @@ async function handleTrailer(env, cfg, url, cors) {
           yt.key,
       };
     }
+
   } catch (e) {
     // Trailer is optional.
   }
@@ -495,7 +679,8 @@ async function handleTrailer(env, cfg, url, cors) {
   return json(payload, 200, cors);
 }
 
-// KV caching with in-memory fallback
+// ================= KV caching =================
+
 const mem = new Map();
 
 async function cacheGet(env, key) {
@@ -507,7 +692,8 @@ async function cacheGet(env, key) {
 
   if (env.CACHE) {
     const raw = await env.CACHE.get(
-      'cw:' + key, 'json'
+      'cw:' + key,
+      'json'
     );
 
     if (raw && raw.exp > Date.now()) {
@@ -526,28 +712,38 @@ async function cacheGet(env, key) {
 async function cachePut(env, key, value, ttl) {
   const exp = Date.now() + ttl * 1000;
 
-  mem.set(key, { value, exp });
+  mem.set(key, {
+    value,
+    exp,
+  });
 
   if (env.CACHE) {
     await env.CACHE.put(
       'cw:' + key,
-      JSON.stringify({ value, exp }),
+      JSON.stringify({
+        value,
+        exp,
+      }),
       { expirationTtl: ttl }
     );
   }
 }
 
+// ================= JSON fetch helper =================
+
 async function fetchJSON(url) {
   const res = await fetch(url, {
     headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'CinexZone/1.0',
+      Accept: 'application/json',
+      'User-Agent': 'CineXZone/1.0',
     },
   });
 
   if (!res.ok) {
     throw Object.assign(
-      new Error('Upstream returned ' + res.status),
+      new Error(
+        'Upstream returned ' + res.status
+      ),
       { status: 502 }
     );
   }
@@ -564,16 +760,21 @@ async function fetchJSON(url) {
   }
 }
 
+// ================= JSON response helper =================
+
 function json(obj, status, extra, more) {
-  return new Response(JSON.stringify(obj), {
-    status: status || 200,
-    headers: Object.assign(
-      {
-        'Content-Type':
-          'application/json; charset=utf-8',
-      },
-      extra || {},
-      more || {}
-    ),
-  });
+  return new Response(
+    JSON.stringify(obj),
+    {
+      status: status || 200,
+      headers: Object.assign(
+        {
+          'Content-Type':
+            'application/json; charset=utf-8',
+        },
+        extra || {},
+        more || {}
+      ),
+    }
+  );
 }
