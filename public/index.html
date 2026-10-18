@@ -1,622 +1,645 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#090d16">
-<title>CineX Zone — Movies &amp; Trailers</title>
-<meta name="description" content="Discover movies, explore trailers, and find authorized movie sources.">
-
+<title>CineX Zone - Movie Discovery</title>
 <style>
 *{box-sizing:border-box}
-:root{--gold:#f3c766;--white:#fff5d8;--bg:#090d16;--panel:#141c2b;--muted:#aab4c5;--line:#273248}
-body{margin:0;background:var(--bg);color:#fff;font-family:Arial,Helvetica,sans-serif}
-body.lock{overflow:hidden}
-
-header{padding:20px 15px;background:linear-gradient(130deg,#111827,#171a23 65%,#292113);border-bottom:1px solid #6b5528;overflow:hidden}
-
-/* LIVE RAINBOW LOGO */
-.brand,
-.intro-brand{
- font-weight:1000;
- white-space:nowrap;
- text-align:center;
- color:transparent;
- background-image:linear-gradient(
-  90deg,
-  #ff1744,
-  #ff9100,
-  #ffea00,
-  #00e676,
-  #00e5ff,
-  #2979ff,
-  #d500f9,
-  #ff1744
- );
- background-size:300% 100%;
- background-position:0% center;
- background-clip:text;
- -webkit-background-clip:text;
- -webkit-text-fill-color:transparent;
- animation:rainbowFlow 5s linear infinite;
- filter:drop-shadow(0 0 10px #a855f755);
-}
-
-.brand{
- font-size:clamp(35px,8vw,76px);
- line-height:1.2;
- letter-spacing:-2px;
-}
-
-@keyframes rainbowFlow{
- 0%{background-position:0% center}
- 100%{background-position:300% center}
-}
-
-header p{margin:10px 0 0;color:#d6d9e2;font-size:13px;text-align:center}
-.tags{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px}
-.tags span{border:1px solid #705a2b;background:#161a22;border-radius:20px;padding:6px 10px;color:#f5d88f;font-size:10px}
-
-main{max-width:1400px;margin:auto;padding:16px 14px}
-.search{width:100%;padding:13px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:10px 0 20px}
-.search:focus{outline:1px solid var(--gold)}
-.sectionTitle{font-size:clamp(17px,2.5vw,22px);margin:18px 0 12px}
-.movies{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
-.card{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .18s,border-color .18s}
-.card:hover{transform:translateY(-3px);border-color:#a17c36}
-.card>img,.poster{display:block;width:100%;aspect-ratio:2/3;object-fit:cover}
-.poster{display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;background:linear-gradient(145deg,#1a2336,#292315);color:#f5d88f;font-size:22px;font-weight:bold}
-.info{padding:9px}
-.info h3{font-size:14px;line-height:1.3;margin:2px 0 6px;overflow-wrap:anywhere}
-.info p{color:var(--muted);font-size:11px;line-height:1.4;margin:5px 0}
+body{margin:0;background:#090d16;color:#fff;font-family:Arial,sans-serif}
+body.modal-open{overflow:hidden}
+header{padding:22px 16px;background:#111827;border-bottom:1px solid #263044}
+.logo{font-size:29px;font-weight:900;color:#5eead4}
+.logo span{color:white}
+header p,.info p{color:#aab4c5;font-size:13px}
+main{max-width:1100px;margin:auto;padding:20px 15px}
+.search{width:100%;padding:14px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:12px 0 24px}
+.sectionTitle{font-size:20px;margin:18px 0 14px}
+.movies{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:16px}
+.card{background:#141c2b;border:1px solid #273248;border-radius:14px;overflow:hidden;transition:transform .15s}
+.card:hover{transform:translateY(-3px)}
+.poster{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;background:#1a2336}
+.poster img{width:100%;height:100%;object-fit:cover}
+.info{padding:12px}
+.info h3{font-size:16px;overflow-wrap:anywhere}
+.info p{font-size:12px;line-height:1.5}
 .overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.rating{color:#fbbf24!important;font-weight:bold}
-.btn{width:100%;display:block;text-align:center;text-decoration:none;border:0;border-radius:7px;padding:10px 5px;margin-top:7px;font-size:12px;font-weight:bold;cursor:pointer}
-.watch{background:linear-gradient(110deg,#f1c45e,#fff0b8);color:#1a160b}
-.download{border:1px solid #8c713b;color:#f5d88f;background:transparent}
+.rating{color:#fbbf24;font-weight:bold}
+.btn{width:100%;display:block;text-align:center;text-decoration:none;border:0;border-radius:8px;padding:11px 8px;margin-top:8px;font-size:13px;font-weight:bold;cursor:pointer}
+.watch{background:#14b8a6;color:#071713}
+.download{border:1px solid #526078;color:white;background:transparent}
+.btn:disabled{opacity:.5;cursor:wait}
 .note,footer{color:#9eabc0;font-size:12px;line-height:1.7}
-footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
-.status{text-align:center;color:var(--muted);padding:16px 8px;font-size:13px}
+footer{text-align:center;padding:25px;border-top:1px solid #273248;margin-top:24px}
+.status{text-align:center;color:#aab4c5;padding:20px;overflow-wrap:anywhere}
 .status.error{color:#f87171}
-.spinner{display:inline-block;width:20px;height:20px;border:3px solid #344158;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}
+.spinner{display:inline-block;width:22px;height:22px;border:3px solid #344158;border-top-color:#14b8a6;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.pagination{display:flex;justify-content:center;gap:7px;padding:12px 0 22px;flex-wrap:wrap}
-.pagination button{padding:8px 12px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
-.pagination button.current{background:var(--gold);color:#17130a;border-color:var(--gold)}
-.pagination button:disabled{opacity:.4}
-
-#detailBox,#torrentBox,#playerBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}
-.detailContent,.torrentContent,.playerContent{max-width:650px;margin:28px auto;background:var(--panel);padding:15px;border:1px solid #44371f;border-radius:12px}
+.pagination{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:12px 0 22px}
+.pagination button,.filter{padding:9px 12px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
+.pagination button.current{background:#14b8a6;color:#071713}
+.pagination button:disabled{opacity:.4;cursor:default}
+#detailBox,#torrentBox,#playerBox{display:none;position:fixed;inset:0;background:#000d;z-index:99;overflow:auto;padding:15px}
+.detailContent,.torrentContent,.playerContent{max-width:650px;margin:30px auto;background:#141c2b;padding:16px;border:1px solid #273248;border-radius:12px}
 .playerContent{max-width:900px}
-#moviePlayer{width:100%;max-height:70vh;background:#000}
-.close{float:right;background:var(--gold);color:#1a160b;border:0;border-radius:6px;padding:9px 11px;cursor:pointer;font-weight:bold}
-.torrentItem{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
-.t-title{font-size:13px;overflow-wrap:anywhere}
-.t-meta{color:var(--muted);font-size:11px;margin:6px 0;display:flex;flex-wrap:wrap;gap:10px}
-.badge{background:#292315;border-radius:4px;padding:3px 7px;font-size:11px;color:#f5d88f}
+.close{float:right;background:#14b8a6;color:#071713;border:0;border-radius:6px;padding:10px;cursor:pointer}
+.torrentToolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.torrentToolbar input,.torrentToolbar select{min-width:0;flex:1;padding:10px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white}
+.torrentItem{border:1px solid #273248;border-radius:10px;padding:12px;margin-bottom:10px;overflow-wrap:anywhere}
+.t-title{font-size:13px;line-height:1.5;font-weight:bold}
+.t-meta{color:#9eabc0;font-size:11px;margin:8px 0;display:flex;flex-wrap:wrap;gap:10px}
+.badge{background:#1a2336;border-radius:4px;padding:4px 7px;font-size:11px;color:#5eead4}
+.badge.q4k{color:#fbbf24}
+.badge.q1080{color:#5eead4}
 .src{color:#9eabc0;font-size:10px}
-
-/* CINEMATIC INTRO */
-#intro{
- position:fixed;
- inset:0;
- z-index:1000;
- display:flex;
- align-items:center;
- justify-content:center;
- flex-direction:column;
- text-align:center;
- overflow:hidden;
- background:radial-gradient(ellipse at center,#222019 0%,#090d16 55%,#020308 100%);
- animation:introExit .7s ease 3.7s forwards;
-}
-.intro-glow{
- position:absolute;
- width:75vw;
- height:75vw;
- max-width:600px;
- max-height:600px;
- border-radius:50%;
- background:#f3c76612;
- filter:blur(60px);
- animation:pulse 2s ease-in-out infinite alternate;
-}
-.intro-brand{
- position:relative;
- z-index:1;
- font-size:clamp(35px,9vw,78px);
- letter-spacing:-2px;
- line-height:1.25;
-}
-.intro-line{height:2px;width:min(280px,65vw);margin:18px auto;background:linear-gradient(90deg,transparent,#f3c766,transparent);animation:lineIn 1s ease both}
-.intro-caption{position:relative;z-index:1;color:#f5d88f;font-size:clamp(10px,2.7vw,13px);letter-spacing:3px;animation:captionIn .8s ease .4s both}
-.intro-sub{position:relative;z-index:1;margin-top:15px;color:#b8c0d0;font-size:11px;letter-spacing:2px;animation:captionIn .8s ease .7s both}
-@keyframes introExit{to{opacity:0;visibility:hidden}}
-@keyframes pulse{from{transform:scale(.8);opacity:.5}to{transform:scale(1.15);opacity:1}}
-@keyframes lineIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
-@keyframes captionIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-
+.torrentEmpty{text-align:center;padding:20px;color:#aab4c5;line-height:1.7}
+#moviePlayer{width:100%;max-height:70vh;background:black}
 @media(max-width:600px){
- main{padding:10px 7px}
- .movies{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
- .card{border-radius:7px}
- .info{padding:5px}
- .info h3{font-size:clamp(9px,2.8vw,12px);line-height:1.25;margin:1px 0 5px}
- .info p{font-size:clamp(8px,2.3vw,10px);line-height:1.3;margin:4px 0}
- .info .overview{display:none}
- .btn{font-size:clamp(8px,2.3vw,10px);padding:7px 2px;margin-top:5px;border-radius:5px}
- .sectionTitle{margin:15px 0 9px}
- .search{font-size:14px;padding:12px}
- header{padding:17px 8px}
- .brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}
- .tags{gap:5px}
- .tags span{font-size:9px;padding:4px 6px}
- .detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}
- .intro-brand{font-size:clamp(30px,8.5vw,48px);letter-spacing:-1.5px}
- .intro-caption{letter-spacing:2px}
-}
-
-@media(prefers-reduced-motion:reduce){
- .brand,.intro-brand{animation:rainbowFlow 5s linear infinite!important}
- *,*::before,*::after{scroll-behavior:auto!important}
+ .movies{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .poster{height:190px}
+ .info{padding:9px}
+ .info h3{font-size:14px}
+ .detailContent,.torrentContent{margin:10px auto;padding:12px}
 }
 </style>
 </head>
-
-<body class="lock">
-
-<div id="intro" aria-label="CineX Zone loading intro">
- <div class="intro-glow"></div>
- <div class="intro-brand">CineX Zone</div>
- <div class="intro-line"></div>
- <div class="intro-caption">WATCH · TORRENT · DOWNLOAD</div>
- <div class="intro-sub">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div>
-</div>
-
+<body>
 <header>
- <div class="brand">CineX Zone</div>
- <p>Discover movies. Explore trailers. Find authorized watch &amp; download sources.</p>
- <div class="tags">
-  <span>🎬 MOVIES</span>
-  <span>▶ TRAILERS</span>
-  <span>⬇ WATCH &amp; DOWNLOAD</span>
- </div>
+  <div class="logo">Cine<span>X Zone</span> 🎬</div>
+  <p>Discover movies. Watch freely. Enjoy cinema.</p>
 </header>
 
 <main>
- <input id="search" class="search" placeholder="🔍 Search movies..." aria-label="Search movies">
+  <input id="search" class="search" type="search"
+    placeholder="🔍 Search movies..." autocomplete="off"
+    aria-label="Search movies">
 
- <div id="searchSection" style="display:none">
-  <h2 class="sectionTitle">🔍 Search Results</h2>
-  <div id="movieGrid" class="movies"></div>
-  <div id="status" class="status"></div>
-  <nav id="pagination" class="pagination" aria-label="Search pages"></nav>
- </div>
+  <section id="searchSection" hidden>
+    <h2 class="sectionTitle">🔍 Search Results</h2>
+    <div id="movieGrid" class="movies"></div>
+    <div id="status" class="status" aria-live="polite"></div>
+    <nav id="pagination" class="pagination" aria-label="Search pages"></nav>
+  </section>
 
- <div id="latestSection">
-  <h2 class="sectionTitle">🆕 Latest Movies</h2>
-  <div id="latestGrid" class="movies"></div>
-  <div id="latestStatus" class="status"><span class="spinner"></span>Loading latest movies…</div>
- </div>
+  <section id="latestSection">
+    <h2 class="sectionTitle">🆕 Latest Movies</h2>
+    <div id="latestGrid" class="movies"></div>
+    <div id="latestStatus" class="status" aria-live="polite">
+      <span class="spinner"></span>Loading latest movies…
+    </div>
+  </section>
 
- <div id="popularSection" style="display:none">
-  <h2 class="sectionTitle">🔥 Popular Movies</h2>
-  <div id="popularGrid" class="movies"></div>
-  <div id="popularStatus" class="status"></div>
-  <div class="pagination"><button id="homeRefresh" type="button">↻ Refresh</button></div>
- </div>
+  <section id="popularSection" hidden>
+    <h2 class="sectionTitle">🔥 Popular Movies</h2>
+    <div id="popularGrid" class="movies"></div>
+    <div id="popularStatus" class="status"></div>
+    <div class="pagination">
+      <button id="homeRefresh" type="button">↻ Refresh</button>
+    </div>
+  </section>
 
- <p class="note">
-  CineX Zone is an independent movie discovery catalog. Full-film playback and downloads depend on each provider. Use official or otherwise authorized sources and check the license before downloading or sharing.
-  <span class="src" id="tmdbAttribution" style="display:none">This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
- </p>
+  <p class="note">
+    CineX Zone is an independent movie catalog. Use official or
+    authorized sources and check the applicable license.
+    <span class="src" id="tmdbAttribution" hidden>
+      This product uses the TMDB API but is not endorsed or certified by TMDB.
+    </span>
+  </p>
 </main>
 
-<div id="detailBox">
- <div class="detailContent">
-  <button class="close" onclick="closeDetail()">✕ Close</button>
-  <h3 id="detailTitle" style="margin:0 40px 12px 0"></h3>
-  <div id="detailBody"></div>
-  <button class="btn watch" id="detailTorrentsBtn" type="button">⬇ Find Download Sources</button>
- </div>
+<div id="detailBox" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="detailContent">
+    <button class="close" onclick="closeDetail()" type="button">✕ Close</button>
+    <h3 id="detailTitle"></h3>
+    <div id="detailBody"></div>
+    <button class="btn watch" id="detailTorrentsBtn" type="button">
+      ⬇ Show Available Sources
+    </button>
+  </div>
 </div>
 
-<div id="torrentBox">
- <div class="torrentContent">
-  <button class="close" onclick="closeTorrents()">✕ Close</button>
-  <h3 id="torrentTitle" style="margin:0 40px 12px 0">Download Sources</h3>
-  <p class="note">Only download or share content when you have permission to do so.</p>
-  <div id="torrentList"></div>
- </div>
+<div id="torrentBox" role="dialog" aria-modal="true" aria-labelledby="torrentTitle">
+  <div class="torrentContent">
+    <button class="close" onclick="closeTorrents()" type="button">✕ Close</button>
+    <h3 id="torrentTitle">Available Sources</h3>
+
+    <div class="torrentToolbar">
+      <input id="torrentFilter" type="search"
+        placeholder="Filter results…" aria-label="Filter results">
+      <select id="qualityFilter" aria-label="Filter by quality">
+        <option value="all">All qualities</option>
+        <option value="2160">4K / 2160p</option>
+        <option value="1080">1080p</option>
+        <option value="720">720p</option>
+        <option value="other">Other</option>
+      </select>
+      <select id="torrentSort" aria-label="Sort results">
+        <option value="seeds">Most seeders</option>
+        <option value="quality">Best quality</option>
+        <option value="title">Title A–Z</option>
+      </select>
+    </div>
+
+    <div id="torrentList" aria-live="polite"></div>
+    <button id="retryTorrents" class="btn download" type="button" hidden>
+      ↻ Retry search
+    </button>
+  </div>
 </div>
 
-<div id="playerBox">
- <div class="playerContent">
-  <button class="close" onclick="closeMovie()">✕ Close</button>
-  <h3 id="playerTitle">CineX Zone Player</h3>
-  <video id="moviePlayer" controls playsinline preload="metadata">Your browser does not support video playback.</video>
-  <p class="note">Trailer playback requires an internet connection. Full-film playback depends on an authorized provider.</p>
- </div>
+<div id="playerBox" role="dialog" aria-modal="true" aria-labelledby="playerTitle">
+  <div class="playerContent">
+    <button class="close" onclick="closeMovie()" type="button">✕ Close</button>
+    <h3 id="playerTitle">Movie Trailer</h3>
+    <video id="moviePlayer" controls playsinline preload="metadata">
+      Your browser does not support video playback.
+    </video>
+    <p class="note">Video playback requires an internet connection.</p>
+  </div>
 </div>
 
-<footer>© CineX Zone · Movie Discovery, Trailers &amp; Authorized Sources</footer>
+<footer>© CineX Zone · Movie Discovery</footer>
 
 <script>
-const grid=document.getElementById('movieGrid');
-const statusEl=document.getElementById('status');
-const pagEl=document.getElementById('pagination');
+'use strict';
 
-const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent(
- '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#f5d88f" font-size="22" text-anchor="middle" dominant-baseline="middle">MOVIE</text></svg>'
+const $ = id => document.getElementById(id);
+const grid = $('movieGrid');
+const statusEl = $('status');
+const pagEl = $('pagination');
+
+const PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#5eead4" font-size="35" text-anchor="middle">🎬</text></svg>'
 );
 
-const GENRE_MAP={
- 28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',
- 99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',
- 27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Science Fiction',
- 10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'
+const GENRE_MAP = {
+  28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',
+  99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',
+  27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',
+  878:'Science Fiction',10770:'TV Movie',53:'Thriller',
+  10752:'War',37:'Western'
 };
 
-let debounceTimer=null;
-let currentQuery='';
-let currentPage=1;
-let totalPages=1;
-let currentMovie=null;
+let debounceTimer = null;
+let currentQuery = '';
+let currentPage = 1;
+let totalPages = 1;
+let currentMovie = null;
+let currentTorrentMovie = null;
+let torrentResults = [];
+let torrentRequestId = 0;
 
-function genreNames(m){
- if(m.genres&&m.genres.length&&m.genres[0])return m.genres;
- return(m.genreIds||[]).map(id=>GENRE_MAP[id]).filter(Boolean);
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  })[c]);
 }
 
-async function api(path,params){
- const res=await fetch(path+'?'+new URLSearchParams(params||{}));
- let body=null;
- try{body=await res.json()}catch(e){}
- if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));
- return body;
+function genreNames(movie) {
+  if (Array.isArray(movie.genres) && movie.genres.length) return movie.genres;
+  return (movie.genreIds || []).map(id => GENRE_MAP[id]).filter(Boolean);
 }
 
-function withTimeout(p,ms){
- return Promise.race([
-  p,
-  new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out')),ms))
- ]);
+async function api(path, params = {}) {
+  const url = path + '?' + new URLSearchParams(params);
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  let body = null;
+  try { body = await response.json(); } catch (_) {}
+
+  if (!response.ok) {
+    throw new Error((body && body.error) || ('HTTP ' + response.status));
+  }
+  return body || {};
 }
 
-async function loadHome(){
- const ls=document.getElementById('latestStatus');
- const ps=document.getElementById('popularStatus');
-
- ls.className='status';
- ps.className='status';
- ls.innerHTML='<span class="spinner"></span>Loading latest movies…';
- ps.innerHTML='';
- document.getElementById('latestGrid').innerHTML='';
- document.getElementById('popularGrid').innerHTML='';
-
- try{
-  const data=await withTimeout(api('/api/home'),12000);
-
-  if(data.mode==='tmdb'){
-   document.getElementById('tmdbAttribution').style.display='inline';
-   document.getElementById('popularSection').style.display='block';
-  }
-
-  renderHome(document.getElementById('latestGrid'),ls,data.latest||[],data.latestSource);
-
-  if(data.popular&&data.popular.length){
-   document.getElementById('popularSection').style.display='block';
-   renderHome(document.getElementById('popularGrid'),ps,data.popular,data.popularSource);
-  }
-
-  if(data.notice){
-   const n=document.createElement('p');
-   n.className='src';
-   n.textContent=data.notice;
-   ls.appendChild(n);
-  }
-
-  if(!(data.latest||[]).length&&!(data.popular||[]).length){
-   ls.className='status error';
-   ls.textContent='No movies available right now — tap Refresh to try again.';
-
-   const b=document.createElement('button');
-   b.className='btn download';
-   b.textContent='↻ Refresh movies';
-   b.style.maxWidth='190px';
-   b.style.margin='10px auto';
-   b.onclick=loadHome;
-   ls.appendChild(b);
-
-   if(data.notice){
-    const n=document.createElement('p');
-    n.className='src';
-    n.textContent=data.notice;
-    ls.appendChild(n);
-   }
-  }
- }catch(e){
-  ls.className='status error';
-  ls.textContent='Could not load movies: '+e.message+' — try Refresh.';
-
-  const b=document.createElement('button');
-  b.className='btn download';
-  b.textContent='↻ Refresh';
-  b.style.maxWidth='150px';
-  b.style.margin='10px auto';
-  b.onclick=loadHome;
-  ls.appendChild(b);
-  ps.innerHTML='';
- }
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Request timed out')), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
 }
 
-function renderHome(g,s,movies,source){
- if(!movies.length){s.textContent='';return;}
- s.textContent='Showing '+movies.length+' movies · via '+(source||'');
- for(const m of movies)g.appendChild(movieCard(m));
+function setModal(id, open) {
+  $(id).style.display = open ? 'block' : 'none';
+  document.body.classList.toggle('modal-open',
+    ['detailBox','torrentBox','playerBox'].some(name => $(name).style.display === 'block'));
 }
 
-document.getElementById('homeRefresh').addEventListener('click',loadHome);
+function makePoster(movie) {
+  if (!movie.poster) return '<div class="poster">🎬</div>';
+  return '<div class="poster"><img loading="lazy" src="' + esc(movie.poster) +
+    '" alt="' + esc(movie.title) + ' poster" onerror="this.onerror=null;this.src=\'' +
+    PLACEHOLDER + '\'"></div>';
+}
 
-document.getElementById('search').addEventListener('input',function(){
- clearTimeout(debounceTimer);
+/* Homepage */
+async function loadHome() {
+  const latestStatus = $('latestStatus');
+  const popularStatus = $('popularStatus');
 
- debounceTimer=setTimeout(function(){
-  currentQuery=document.getElementById('search').value.trim();
-  currentPage=1;
+  latestStatus.className = 'status';
+  latestStatus.innerHTML = '<span class="spinner"></span>Loading latest movies…';
+  popularStatus.textContent = '';
+  $('latestGrid').replaceChildren();
+  $('popularGrid').replaceChildren();
 
-  if(currentQuery){
-   document.getElementById('searchSection').style.display='block';
-   loadMovies();
-  }else{
-   document.getElementById('searchSection').style.display='none';
-   grid.innerHTML='';
-   statusEl.textContent='';
-   pagEl.innerHTML='';
+  try {
+    const data = await withTimeout(api('/api/home'), 12000);
+
+    if (data.mode === 'tmdb') {
+      $('tmdbAttribution').hidden = false;
+      $('popularSection').hidden = false;
+    }
+
+    renderHome($('latestGrid'), latestStatus, data.latest || [], data.latestSource);
+    if (data.popular && data.popular.length) {
+      $('popularSection').hidden = false;
+      renderHome($('popularGrid'), popularStatus, data.popular, data.popularSource);
+    }
+
+    if (data.notice) {
+      const notice = document.createElement('p');
+      notice.className = 'src';
+      notice.textContent = data.notice;
+      latestStatus.appendChild(notice);
+    }
+
+    if (!(data.latest || []).length && !(data.popular || []).length) {
+      latestStatus.className = 'status error';
+      latestStatus.textContent = 'No movies available right now. Try refreshing.';
+    }
+  } catch (error) {
+    latestStatus.className = 'status error';
+    latestStatus.textContent = 'Could not load movies: ' + error.message;
   }
- },450);
+}
+
+function renderHome(container, message, movies, source) {
+  if (!movies.length) {
+    message.textContent = 'No movies available in this section.';
+    return;
+  }
+  message.textContent = 'Showing ' + movies.length + ' movies' +
+    (source ? ' · via ' + source : '');
+  movies.forEach(movie => container.appendChild(movieCard(movie)));
+}
+
+$('homeRefresh').addEventListener('click', loadHome);
+
+/* Search */
+$('search').addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    currentQuery = $('search').value.trim();
+    currentPage = 1;
+
+    if (currentQuery) {
+      $('searchSection').hidden = false;
+      loadMovies();
+    } else {
+      $('searchSection').hidden = true;
+      grid.replaceChildren();
+      statusEl.textContent = '';
+      pagEl.replaceChildren();
+    }
+  }, 400);
 });
 
-async function loadMovies(){
- statusEl.className='status';
- statusEl.innerHTML='<span class="spinner"></span>Searching…';
- grid.innerHTML='';
- pagEl.innerHTML='';
+async function loadMovies() {
+  statusEl.className = 'status';
+  statusEl.innerHTML = '<span class="spinner"></span>Searching…';
+  grid.replaceChildren();
+  pagEl.replaceChildren();
 
- try{
-  const data=await withTimeout(
-   api('/api/movies',{q:currentQuery,page:currentPage}),12000
-  );
+  try {
+    const data = await withTimeout(
+      api('/api/movies', { q: currentQuery, page: currentPage }), 12000
+    );
+    totalPages = Math.max(1, Number(data.totalPages) || 1);
 
-  totalPages=data.totalPages||1;
+    if (!(data.results || []).length) {
+      statusEl.textContent = 'No movies found.';
+      return;
+    }
 
-  if(!data.results||!data.results.length){
-   statusEl.textContent='No movies found.';
-   return;
+    statusEl.textContent = (data.totalResults || data.results.length) +
+      ' results · page ' + (data.page || currentPage) + ' of ' + totalPages +
+      (data.source ? ' · via ' + data.source : '');
+
+    data.results.forEach(movie => grid.appendChild(movieCard(movie)));
+    renderPagination();
+  } catch (error) {
+    statusEl.className = 'status error';
+    statusEl.textContent = 'Search failed: ' + error.message;
   }
-
-  statusEl.textContent=data.totalResults+' results · page '+data.page+' of '+totalPages+' · via '+(data.source||'');
-
-  for(const m of data.results)grid.appendChild(movieCard(m));
-  renderPagination();
- }catch(e){
-  statusEl.className='status error';
-  statusEl.textContent='Search failed: '+e.message;
- }
 }
 
-function movieCard(m){
- const card=document.createElement('article');
- card.className='card';
+function movieCard(movie) {
+  const card = document.createElement('article');
+  card.className = 'card';
 
- const poster=m.poster
-  ?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">'
-  :'<div class="poster">🎬</div>';
+  const genres = genreNames(movie);
+  card.innerHTML = makePoster(movie) +
+    '<div class="info"><h3>' + esc(movie.title) + '</h3>' +
+    '<p>' + esc(movie.year || '') +
+    (genres.length ? ' · ' + esc(genres.slice(0, 2).join(', ')) : '') + '</p>' +
+    (movie.rating ? '<p class="rating">★ ' +
+      Number(movie.rating).toFixed(1) + '</p>' : '') +
+    (movie.overview ? '<p class="overview">' + esc(movie.overview) + '</p>' : '') +
+    '<button class="btn download cardSources" type="button">⌕ View Sources</button></div>';
 
- const genres=genreNames(m);
-
- card.innerHTML=poster+
-  '<div class="info"><h3>'+esc(m.title)+'</h3><p>'+
-  esc(m.year||'')+
-  (genres.length?' · '+esc(genres.slice(0,2).join(', ')):'')+
-  '</p>'+
-  (m.rating?'<p class="rating">★ '+Number(m.rating).toFixed(1)+'</p>':'')+
-  (m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')+
-  '<button class="btn download" type="button">⬇ Sources</button></div>';
-
- card.addEventListener('click',()=>openDetail(m));
- return card;
-}
-
-function renderPagination(){
- function add(label,page,disabled,current){
-  const b=document.createElement('button');
-  b.textContent=label;
-  if(current)b.className='current';
-  b.disabled=!!disabled;
-  b.addEventListener('click',()=>{
-   currentPage=page;
-   loadMovies();
-   window.scrollTo(0,0);
+  card.addEventListener('click', event => {
+    if (event.target.closest('.cardSources')) {
+      event.stopPropagation();
+      openTorrents(movie);
+      return;
+    }
+    openDetail(movie);
   });
-  pagEl.appendChild(b);
- }
 
- add('‹ Prev',currentPage-1,currentPage<=1);
- const start=Math.max(1,currentPage-2);
- const end=Math.min(totalPages,start+4);
-
- for(let p=start;p<=end;p++)add(String(p),p,false,p===currentPage);
- add('Next ›',currentPage+1,currentPage>=totalPages);
+  return card;
 }
 
-async function openDetail(m){
- currentMovie=m;
- document.getElementById('detailTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
-
- const body=document.getElementById('detailBody');
- let html='';
-
- if(m.poster){
-  html+='<img src="'+esc(m.poster)+'" alt="" style="width:120px;max-width:40%;border-radius:8px;float:left;margin:0 12px 8px 0">';
- }
-
- const genres=genreNames(m);
-
- html+='<p>'+esc(genres.join(', '))+
-  (genres.length&&m.year?' · ':'')+
-  esc(m.year||'')+
-  (m.rating?' · <span class="rating">★ '+Number(m.rating).toFixed(1)+'</span>':'')+
-  (m.releaseDate&&m.releaseDate.length>4?' · <span class="src">released '+esc(m.releaseDate.slice(0,10))+'</span>':'')+
-  '</p>';
-
- if(m.overview)html+='<p>'+esc(m.overview)+'</p>';
- if(m.artist)html+='<p class="src">Starring/Artist: '+esc(m.artist)+'</p>';
-
- if(m.trailerUrl){
-  html+='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Trailer</button>';
- }
-
- if(m.storeUrl){
-  html+='<a class="btn download" href="'+esc(m.storeUrl)+'" target="_blank" rel="noopener">ⓘ View Official Source</a>';
- }
-
- html+='<div id="trailerSlot"><p class="src">Checking for trailer…</p></div><div style="clear:both"></div>';
- body.innerHTML=html;
-
- document.getElementById('detailBox').style.display='block';
- document.body.style.overflow='hidden';
-
- if(m.source==='TMDB'&&/^\d+$/.test(m.id||'')){
-  try{
-   const data=await withTimeout(api('/api/trailer',{id:m.id}),8000);
-   const slot=document.getElementById('trailerSlot');
-
-   if(data.trailerUrl){
-    currentMovie.trailerUrl=data.trailerUrl;
-    if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Official Trailer</button>';
-   }else if(slot){
-    slot.innerHTML='';
-   }
-  }catch(e){
-   const slot=document.getElementById('trailerSlot');
-   if(slot)slot.innerHTML='';
+function renderPagination() {
+  function add(label, page, disabled, current) {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.disabled = !!disabled;
+    if (current) button.className = 'current';
+    button.addEventListener('click', () => {
+      currentPage = page;
+      loadMovies();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    pagEl.appendChild(button);
   }
- }else{
-  const slot=document.getElementById('trailerSlot');
-  if(slot)slot.innerHTML='';
- }
+
+  add('‹ Prev', currentPage - 1, currentPage <= 1, false);
+  const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+  const end = Math.min(totalPages, start + 4);
+  for (let page = start; page <= end; page++) {
+    add(String(page), page, false, page === currentPage);
+  }
+  add('Next ›', currentPage + 1, currentPage >= totalPages, false);
 }
 
-function closeDetail(){
- document.getElementById('detailBox').style.display='none';
- document.body.style.overflow='';
+/* Movie details and trailer */
+async function openDetail(movie) {
+  currentMovie = movie;
+  $('detailTitle').textContent = movie.title + (movie.year ? ' (' + movie.year + ')' : '');
+
+  let html = '';
+  if (movie.poster) {
+    html += '<img src="' + esc(movie.poster) + '" alt="" style="width:120px;border-radius:8px;float:left;margin:0 12px 8px 0">';
+  }
+
+  const genres = genreNames(movie);
+  html += '<p>' + esc(genres.join(', ')) +
+    (genres.length && movie.year ? ' · ' : '') + esc(movie.year || '') +
+    (movie.rating ? ' · <span class="rating">★ ' +
+      Number(movie.rating).toFixed(1) + '</span>' : '') + '</p>';
+
+  if (movie.overview) html += '<p>' + esc(movie.overview) + '</p>';
+  if (movie.artist) html += '<p class="src">Artist: ' + esc(movie.artist) + '</p>';
+
+  if (movie.trailerUrl) {
+    html += '<button class="btn watch" id="trailerButton" type="button">▶ Watch Trailer</button>';
+  }
+  if (movie.storeUrl) {
+    html += '<a class="btn download" href="' + esc(movie.storeUrl) +
+      '" target="_blank" rel="noopener noreferrer">ⓘ View Official Source</a>';
+  }
+
+  html += '<div id="trailerSlot"></div><div style="clear:both"></div>';
+  $('detailBody').innerHTML = html;
+  setModal('detailBox', true);
+
+  const trailerButton = $('trailerButton');
+  if (trailerButton) trailerButton.addEventListener('click', playTrailer);
+
+  if (movie.source === 'TMDB' && /^\d+$/.test(movie.id || '')) {
+    try {
+      const data = await withTimeout(api('/api/trailer', { id: movie.id }), 8000);
+      if (data.trailerUrl) {
+        currentMovie.trailerUrl = data.trailerUrl;
+        const slot = $('trailerSlot');
+        slot.innerHTML = '<button class="btn watch" id="officialTrailerButton" type="button">▶ Watch Official Trailer</button>';
+        $('officialTrailerButton').addEventListener('click', playTrailer);
+      }
+    } catch (_) {
+      // Details remain available if the trailer provider is unavailable.
+    }
+  }
 }
 
-document.getElementById('detailTorrentsBtn').addEventListener('click',()=>{
- closeDetail();
- if(currentMovie)openTorrents(currentMovie);
+function closeDetail() { setModal('detailBox', false); }
+
+$('detailTorrentsBtn').addEventListener('click', () => {
+  const movie = currentMovie;
+  closeDetail();
+  if (movie) openTorrents(movie);
 });
 
-function playTrailer(){
- if(!currentMovie||!currentMovie.trailerUrl)return;
-
- closeDetail();
-
- const v=document.getElementById('moviePlayer');
- document.getElementById('playerTitle').textContent=(currentMovie.title||'Movie')+' · Trailer';
- v.innerHTML='';
- v.src=currentMovie.trailerUrl;
-
- document.getElementById('playerBox').style.display='block';
- document.body.style.overflow='hidden';
-
- v.play().catch(()=>{
-  window.open(currentMovie.trailerUrl,'_blank','noopener');
-  closeMovie();
- });
+function playTrailer() {
+  if (!currentMovie || !currentMovie.trailerUrl) return;
+  const video = $('moviePlayer');
+  $('playerTitle').textContent = currentMovie.title + ' · Trailer';
+  video.src = currentMovie.trailerUrl;
+  setModal('detailBox', false);
+  setModal('playerBox', true);
+  video.play().catch(() => {
+    window.open(currentMovie.trailerUrl, '_blank', 'noopener,noreferrer');
+  });
 }
 
-async function openTorrents(m){
- document.getElementById('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
+function closeMovie() {
+  const video = $('moviePlayer');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  setModal('playerBox', false);
+}
 
- const list=document.getElementById('torrentList');
- list.innerHTML='<p class="status"><span class="spinner"></span>Searching sources…</p>';
+/* Source search */
+async function openTorrents(movie) {
+  currentTorrentMovie = movie;
+  const requestId = ++torrentRequestId;
 
- document.getElementById('torrentBox').style.display='block';
- document.body.style.overflow='hidden';
+  $('torrentTitle').textContent = movie.title + (movie.year ? ' (' + movie.year + ')' : '');
+  $('torrentFilter').value = '';
+  $('qualityFilter').value = 'all';
+  $('torrentSort').value = 'seeds';
+  $('retryTorrents').hidden = true;
+  $('torrentList').innerHTML = '<p class="status"><span class="spinner"></span>Searching available sources…</p>';
+  setModal('torrentBox', true);
 
- try{
-  const data=await withTimeout(
-   api('/api/torrents',{q:m.title,year:m.year||''}),12000
-  );
+  try {
+    const data = await withTimeout(api('/api/torrents', {
+      q: movie.title,
+      year: movie.year || ''
+    }), 15000);
 
-  if(data.providerError){
-   list.textContent=data.providerError;
-   return;
+    if (requestId !== torrentRequestId) return;
+
+    if (data.providerError) {
+      $('torrentList').innerHTML =
+        '<div class="torrentEmpty">Source provider unavailable.<br><span class="src">' +
+        esc(data.providerError) + '</span></div>';
+      $('retryTorrents').hidden = false;
+      return;
+    }
+
+    torrentResults = Array.isArray(data.torrents) ? data.torrents : [];
+    renderTorrents();
+  } catch (error) {
+    if (requestId !== torrentRequestId) return;
+    $('torrentList').innerHTML =
+      '<p class="status error">Source search failed: ' + esc(error.message) + '</p>';
+    $('retryTorrents').hidden = false;
+  }
+}
+
+function qualityRank(item) {
+  const quality = String(item.resolution || item.quality || '');
+  if (/2160|4k/i.test(quality)) return 4;
+  if (/1080/i.test(quality)) return 3;
+  if (/720/i.test(quality)) return 2;
+  if (/480/i.test(quality)) return 1;
+  return 0;
+}
+
+function renderTorrents() {
+  const list = $('torrentList');
+  const term = $('torrentFilter').value.trim().toLowerCase();
+  const quality = $('qualityFilter').value;
+  const sort = $('torrentSort').value;
+
+  let items = torrentResults.filter(item => {
+    const title = String(item.title || '');
+    const res = String(item.resolution || item.quality || '');
+    if (term && !title.toLowerCase().includes(term)) return false;
+    if (quality === '2160' && !/2160|4k/i.test(res)) return false;
+    if (quality === '1080' && !/1080/i.test(res)) return false;
+    if (quality === '720' && !/720/i.test(res)) return false;
+    if (quality === 'other' && /2160|4k|1080|720/i.test(res)) return false;
+    return true;
+  });
+
+  items.sort((a, b) => {
+    if (sort === 'quality') return qualityRank(b) - qualityRank(a);
+    if (sort === 'title') return String(a.title || '').localeCompare(String(b.title || ''));
+    return Number(b.seeds || 0) - Number(a.seeds || 0);
+  });
+
+  if (!items.length) {
+    list.innerHTML = '<div class="torrentEmpty">' +
+      (torrentResults.length ? 'No results match these filters.' : 'No sources returned for this search.') +
+      '</div>';
+    return;
   }
 
-  const torrents=data.torrents||[];
+  list.replaceChildren();
+  items.slice(0, 30).forEach(item => {
+    const card = document.createElement('article');
+    card.className = 'torrentItem';
 
-  if(!torrents.length){
-   list.innerHTML='<p class="status">No download sources found for this movie.</p>';
-   return;
+    const title = document.createElement('div');
+    title.className = 't-title';
+    title.textContent = item.title || 'Untitled source';
+    card.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 't-meta';
+
+    const res = item.resolution || item.quality || '';
+    if (res) {
+      const badge = document.createElement('span');
+      badge.className = 'badge' + (/2160|4k/i.test(res) ? ' q4k' : (/1080/i.test(res) ? ' q1080' : ''));
+      badge.textContent = res;
+      meta.appendChild(badge);
+    }
+
+    [
+      item.size ? 'Size: ' + item.size : '',
+      '↑ ' + Number(item.seeds || 0),
+      '↓ ' + Number(item.peers || 0),
+      item.source ? 'Source: ' + item.source : ''
+    ].filter(Boolean).forEach(text => {
+      const span = document.createElement('span');
+      span.textContent = text;
+      meta.appendChild(span);
+    });
+
+    card.appendChild(meta);
+
+    if (validMagnet(item.magnet)) {
+      const link = document.createElement('a');
+      link.className = 'btn watch';
+      link.href = item.magnet;
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open Magnet Link';
+      card.appendChild(link);
+    }
+
+    if (validHttpUrl(item.torrentUrl)) {
+      const link = document.createElement('a');
+      link.className = 'btn download';
+      link.href = item.torrentUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open .torrent Source';
+      card.appendChild(link);
+    }
+
+    if (!validMagnet(item.magnet) && !validHttpUrl(item.torrentUrl)) {
+      const note = document.createElement('p');
+      note.className = 'src';
+      note.textContent = 'No direct link supplied by this provider.';
+      card.appendChild(note);
+    }
+
+    list.appendChild(card);
+  });
+}
+
+function validMagnet(value) {
+  return typeof value === 'string' && /^magnet:\?/i.test(value);
+}
+
+function validHttpUrl(value) {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch (_) {
+    return false;
   }
-
-  list.innerHTML='';
-
-  for(const t of torrents.slice(0,15)){
-   const item=document.createElement('div');
-   item.className='torrentItem';
-
-   const url=t.torrentUrl||t.magnet||'';
-
-   const link=url
-    ?'<a class="btn download" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">⬇ Open Source (check license)</a>'
-    :'<span class="src">No source link supplied.</span>';
-
-   item.innerHTML=
-    '<div class="t-title">'+esc(t.title)+'</div>'+
-    '<div class="t-meta">'+
-    (t.resolution?'<span class="badge">'+esc(t.resolution)+'</span>':'')+
-    '<span>'+esc(t.size||'')+'</span>'+
-    '<span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span>'+
-    '</div>'+
-    (t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')+
-    link;
-
-   list.appendChild(item);
-  }
- }catch(e){
-  list.innerHTML='<p class="status error">Source search unavailable: '+esc(e.message)+'</p>';
- }
 }
 
-function closeTorrents(){
- document.getElementById('torrentBox').style.display='none';
- document.body.style.overflow='';
+$('torrentFilter').addEventListener('input', renderTorrents);
+$('qualityFilter').addEventListener('change', renderTorrents);
+$('torrentSort').addEventListener('change', renderTorrents);
+
+$('retryTorrents').addEventListener('click', () => {
+  if (currentTorrentMovie) openTorrents(currentTorrentMovie);
+});
+
+function closeTorrents() {
+  torrentRequestId++;
+  setModal('torrentBox', false);
 }
 
-function closeMovie(){
- const v=document.getElementById('moviePlayer');
- v.pause();
- v.currentTime=0;
- v.removeAttribute('src');
- v.load();
-
- document.getElementById('playerBox').style.display='none';
- document.body.style.overflow='';
-}
-
-const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({
- '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));
-
-setTimeout(()=>{
- const intro=document.getElementById('intro');
- if(intro)intro.remove();
- document.body.classList.remove('lock');
-},4500);
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if ($('playerBox').style.display === 'block') closeMovie();
+  else if ($('torrentBox').style.display === 'block') closeTorrents();
+  else if ($('detailBox').style.display === 'block') closeDetail();
+});
 
 loadHome();
 </script>
