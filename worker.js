@@ -1,5 +1,7 @@
-
-import { getMetadataAdapter, getTorrentAdapter } from './adapters.js';
+import {
+  getMetadataAdapter,
+  getTorrentAdapter,
+} from './adapters.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -63,6 +65,7 @@ export default {
             : 'itunes-keyless',
           kvBound: !!env.CACHE,
           torrentProvider: cfg.torrentProvider,
+          torrentFallbacks: cfg.torrentFallbacks,
           torrentTimeoutMs: cfg.torrentTimeoutMs,
           jackettConfigured: !!(
             cfg.jackettBase && cfg.jackettKey
@@ -92,6 +95,9 @@ export default {
 // ================= Configuration =================
 
 function readConfig(env) {
+  const primaryProvider =
+    env.TORRENT_PROVIDER || 'yts';
+
   return {
     tmdbApiKey: env.TMDB_API_KEY || '',
 
@@ -113,7 +119,6 @@ function readConfig(env) {
       '1800', 10
     ),
 
-    // Preserve the existing default rate limit.
     rlMax: parseInt(
       env.RATE_LIMIT_MAX || '60', 10
     ),
@@ -122,8 +127,15 @@ function readConfig(env) {
       env.RATE_LIMIT_WINDOW || '60', 10
     ),
 
-    torrentProvider:
-      env.TORRENT_PROVIDER || 'yts',
+    torrentProvider: primaryProvider,
+
+    // Keyless fallback chain, tried in order after the
+    // primary provider. tpb and torrentscsv need no keys.
+    torrentFallbacks: [
+      primaryProvider,
+      'tpb',
+      'torrentscsv',
+    ],
 
     torrentTimeoutMs: parseInt(
       env.TORRENT_TIMEOUT_MS || '12000', 10
@@ -450,10 +462,10 @@ async function handleTorrents(env, cfg, url, cors) {
 
   const normTitle = normalizeTitle(q);
 
+  // Cache key is provider-independent: results are the same
+  // regardless of which provider in the chain supplied them.
   const key =
-    'torrents:' +
-    cfg.torrentProvider + ':' +
-    normTitle + ':' + year;
+    'torrents:multi:' + normTitle + ':' + year;
 
   const cached = await cacheGet(env, key);
 
@@ -461,20 +473,77 @@ async function handleTorrents(env, cfg, url, cors) {
     return json(cached, 200, cors);
   }
 
-  let data;
+  // Fallback chain: try the primary provider first, then the
+  // keyless fallbacks. Collect errors; only report a
+  // providerError when every provider in the chain failed.
+  const errors = [];
+  let data = null;
+  let usedProvider = '';
 
-  try {
-    const adapter = getTorrentAdapter(
-      cfg.torrentProvider
-    );
+  for (const providerName of cfg.torrentFallbacks) {
+    let adapter;
 
-    // Search by title first. Match the year below.
-    data = await withTimeout(
-      adapter.search(cfg, q, 1),
-      cfg.torrentTimeoutMs
-    );
+    try {
+      adapter = getTorrentAdapter(providerName);
+    } catch {
+      continue;
+    }
 
-  } catch (e) {
+    // Jackett/Prowlarr need configuration; skip silently so
+    // the keyless fallbacks still get a chance.
+    if (
+      providerName === 'jackett' &&
+      !(cfg.jackettBase && cfg.jackettKey)
+    ) {
+      continue;
+    }
+
+    if (
+      providerName === 'prowlarr' &&
+      !(cfg.prowlarrBase && cfg.prowlarrKey)
+    ) {
+      continue;
+    }
+
+    try {
+      data = await withTimeout(
+        adapter.search(cfg, q, 1),
+        cfg.torrentTimeoutMs
+      );
+
+      if (
+        data &&
+        Array.isArray(data.torrents) &&
+        data.torrents.length
+      ) {
+        usedProvider = providerName;
+        break;
+      }
+
+      // Provider responded but had no results. Keep it as a
+      // candidate but try the next provider before giving up.
+      if (!data) {
+        data = {
+          torrents: [],
+          totalResults: 0,
+          provider: providerName,
+        };
+      }
+
+      usedProvider = usedProvider || providerName;
+
+    } catch (e) {
+      errors.push(
+        providerName + ': ' + e.message
+      );
+    }
+  }
+
+  // Every provider failed - report a graceful error.
+  if (
+    !data ||
+    !Array.isArray(data.torrents)
+  ) {
     const payload = {
       query: q,
       year,
@@ -483,7 +552,8 @@ async function handleTorrents(env, cfg, url, cors) {
       provider: cfg.torrentProvider,
       providerError:
         'Torrent index temporarily unavailable (' +
-        e.message + ')',
+        (errors.join(' | ') || 'no response') +
+        ')',
     };
 
     // Keep temporary errors cached only briefly.
@@ -532,6 +602,15 @@ async function handleTorrents(env, cfg, url, cors) {
       }
     }
 
+    // Never expose a magnet that the provider did not supply
+    // or that could not be built from a valid info hash.
+    if (
+      !t.magnet &&
+      !t.torrentUrl
+    ) {
+      return false;
+    }
+
     return true;
   });
 
@@ -547,11 +626,22 @@ async function handleTorrents(env, cfg, url, cors) {
     year,
     torrents,
     totalResults: torrents.length,
-    provider: cfg.torrentProvider,
+    provider: usedProvider || cfg.torrentProvider,
   };
 
+  if (
+    !torrents.length &&
+    errors.length
+  ) {
+    payload.providerError =
+      'Torrent index temporarily unavailable (' +
+      errors.join(' | ') +
+      ')';
+  }
+
   await cachePut(
-    env, key, payload, cfg.torrentTtl
+    env, key, payload,
+    payload.providerError ? 120 : cfg.torrentTtl
   );
 
   return json(payload, 200, cors);
