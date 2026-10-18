@@ -1,579 +1,459 @@
-
-import { getMetadataAdapter, getTorrentAdapter } from './adapters.js';
-
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const cors = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: cors });
-    }
-
-    const cfg = readConfig(env);
-
-    try {
-      // Homepage movie data
-      if (
-        url.pathname === '/api/home' ||
-        url.pathname === '/api/latest'
-      ) {
-        return await withLimits(
-          env, cfg, cors,
-          () => handleHome(env, cfg, cors)
-        );
-      }
-
-      // Movie search
-      if (url.pathname === '/api/movies') {
-        return await withLimits(
-          env, cfg, cors,
-          () => handleMovies(env, cfg, url, cors)
-        );
-      }
-
-      // Torrent search
-      if (url.pathname === '/api/torrents') {
-        return await withLimits(
-          env, cfg, cors,
-          () => handleTorrents(env, cfg, url, cors)
-        );
-      }
-
-      // Movie trailer
-      if (url.pathname === '/api/trailer') {
-        return await withLimits(
-          env, cfg, cors,
-          () => handleTrailer(env, cfg, url, cors)
-        );
-      }
-
-      // Health check
-      if (url.pathname === '/api/health') {
-        return json({
-          ok: true,
-          tmdbKeyPresent: !!env.TMDB_API_KEY,
-          homepageMode: cfg.tmdbApiKey
-            ? 'tmdb'
-            : 'itunes-keyless',
-          kvBound: !!env.CACHE,
-          torrentProvider: cfg.torrentProvider,
-        }, 200, cors);
-      }
-
-      // Serve the website's static assets and homepage
-      return env.ASSETS.fetch(request);
-
-    } catch (e) {
-      console.error('Worker error:', e && e.message);
-      return json({
-        error: e.message || 'Internal error',
-      }, e.status || 500, cors);
-    }
-  },
-};
-
-function readConfig(env) {
-  return {
-    tmdbApiKey: env.TMDB_API_KEY || '',
-    imageBase:
-      env.IMAGE_BASE ||
-      'https://image.tmdb.org/t/p/w500',
-    cacheTtl: parseInt(env.CACHE_TTL || '3600', 10),
-    torrentTtl: parseInt(
-      env.TORRENT_CACHE_TTL || '900', 10
-    ),
-    homeTtl: parseInt(
-      env.HOME_CACHE_TTL || '1800', 10
-    ),
-    rlMax: parseInt(env.RATE_LIMIT_MAX || '60', 10),
-    rlWindow: parseInt(
-      env.RATE_LIMIT_WINDOW || '60', 10
-    ),
-    torrentProvider: env.TORRENT_PROVIDER || 'yts',
-  };
+<!DOCTYPE html>  <html lang="en">  
+<head>  
+<meta charset="UTF-8">  
+<meta name="viewport" content="width=device-width, initial-scale=1">  
+<title>CineWave - Free Movies</title>  
+<style>  
+*{box-sizing:border-box}  
+body{margin:0;background:#090d16;color:white;font-family:Arial,sans-serif}  
+header{padding:22px 16px;background:#111827;border-bottom:1px solid #263044}  
+.logo{font-size:29px;font-weight:900;color:#5eead4}  
+.logo span{color:white}  
+header p,.info p{color:#aab4c5;font-size:13px}  
+main{max-width:1100px;margin:auto;padding:20px 15px}  
+.search{width:100%;padding:14px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:12px 0 24px}  
+.sectionTitle{font-size:20px;margin:18px 0 14px}  /* Movie poster size: 300 × 445 pixels */
+.movies{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(300px,300px));
+gap:16px;
 }
-
-async function withLimits(env, cfg, cors, fn) {
-  if (env.CACHE) {
-    const bucket = Math.floor(
-      Date.now() / 1000 / cfg.rlWindow
-    );
-    const key = 'rl:global:' + bucket;
-    const count = parseInt(
-      (await env.CACHE.get(key)) || '0', 10
-    ) + 1;
-
-    await env.CACHE.put(key, String(count), {
-      expirationTtl: cfg.rlWindow,
-    });
-
-    if (count > cfg.rlMax) {
-      return json({
-        error: 'Rate limit exceeded. Please wait a minute.',
-      }, 429, cors, {
-        'Retry-After': String(cfg.rlWindow),
-      });
-    }
-  }
-
-  return fn();
+.card{
+width:300px;
+max-width:100%;
+background:#141c2b;
+border:1px solid #273248;
+border-radius:14px;
+overflow:hidden;
+cursor:pointer;
+transition:transform .15s;
 }
-
-// Homepage: TMDB now-playing + popular.
-// Without a TMDB key, use Apple's public movie RSS feed.
-async function handleHome(env, cfg, cors) {
-  if (cfg.tmdbApiKey) {
-    const [latest, popular] = await Promise.all([
-      tmdbSection(
-        env, cfg, 'now_playing', cfg.homeTtl
-      ),
-      tmdbSection(
-        env, cfg, 'popular', cfg.homeTtl
-      ),
-    ]);
-
-    return json({
-      mode: 'tmdb',
-      latest: latest.movies,
-      latestSource: latest.source,
-      popular: popular.movies,
-      popularSource: popular.source,
-    }, 200, cors);
-  }
-
-  const key = 'home:itunes';
-  let cached = await cacheGet(env, key);
-
-  if (!cached) {
-    try {
-      const data = await fetchJSON(
-        'https://itunes.apple.com/us/rss/topmovies/limit=50/json'
-      );
-
-      const entries = (
-        (data || {}).feed || {}
-      ).entry || [];
-
-      const movies = (
-        Array.isArray(entries) ? entries : [entries]
-      ).map(e => ({
-        id: e.id && e.id.attributes
-          ? e.id.attributes['im:id']
-          : (e.id && e.id.label) || '',
-        title: e['im:name']
-          ? e['im:name'].label
-          : '',
-        year: e['im:releaseDate']
-          ? (
-              e['im:releaseDate'].label || ''
-            ).slice(0, 4)
-          : '',
-        releaseDate: e['im:releaseDate']
-          ? e['im:releaseDate'].label
-          : '',
-        overview: e.summary
-          ? e.summary.label
-          : '',
-        poster: e['im:image']
-          ? e['im:image'][
-              e['im:image'].length - 1
-            ].label
-          : null,
-        rating: null,
-        genres: e.category
-          ? [
-              e.category.attributes?.label || ''
-            ]
-          : [],
-        genreIds: [],
-        trailerUrl: null,
-        storeUrl: null,
-        source: 'iTunes',
-      })).filter(m => m.title);
-
-      cached = {
-        movies,
-        source: 'itunes-keyless',
-      };
-
-      await cachePut(
-        env, key, cached, cfg.homeTtl
-      );
-    } catch (e) {
-      cached = {
-        movies: [],
-        source: 'itunes-keyless',
-        error: e.message,
-      };
-    }
-  }
-
-  return json({
-    mode: 'itunes-keyless',
-    latest: cached.movies || [],
-    latestSource: cached.source || 'itunes-keyless',
-    popular: [],
-    popularSource: '',
-    notice: cached.error
-      ? 'Movie data temporarily unavailable: ' +
-        cached.error
-      : 'The homepage is using the Apple movie feed.',
-  }, 200, cors);
+.card:hover{transform:translateY(-3px)}
+.card>img{
+display:block;
+width:300px;
+max-width:100%;
+height:445px;
+object-fit:cover;
 }
-
-async function tmdbSection(env, cfg, section, ttl) {
-  const key = 'home:tmdb:' + section;
-  const cached = await cacheGet(env, key);
-
-  if (cached) {
-    return {
-      movies: cached,
-      source: 'tmdb (cache)',
-    };
-  }
-
-  try {
-    const data = await fetchJSON(
-      'https://api.themoviedb.org/3/movie/' +
-      section +
-      '?api_key=' +
-      encodeURIComponent(cfg.tmdbApiKey) +
-      '&language=en-US&page=1'
-    );
-
-    const movies = (data.results || []).map(m => ({
-      id: String(m.id),
-      title: m.title,
-      year: (m.release_date || '').slice(0, 4),
-      releaseDate: m.release_date || '',
-      overview: m.overview || '',
-      poster: m.poster_path
-        ? cfg.imageBase + m.poster_path
-        : null,
-      rating: m.vote_average,
-      genres: [],
-      genreIds: m.genre_ids || [],
-      trailerUrl: null,
-      storeUrl: null,
-      source: 'TMDB',
-    }));
-
-    if (movies.length) {
-      await cachePut(env, key, movies, ttl);
-    }
-
-    return {
-      movies,
-      source: 'tmdb',
-    };
-  } catch (e) {
-    return {
-      movies: [],
-      source: 'tmdb (' + e.message + ')',
-    };
-  }
+.poster{
+width:300px;
+max-width:100%;
+height:445px;
+display:flex;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+text-align:center;
+padding:12px;
+font-size:24px;
+font-weight:bold;
+background:#1a2336;
 }
+.info{padding:12px}
+.info h3{font-size:16px}
+.info p{font-size:12px;line-height:1.5}
+.overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rating{color:#fbbf24;font-weight:bold}
+.btn{width:100%;display:block;text-align:center;text-decoration:none;border:0;border-radius:8px;padding:11px 5px;margin-top:8px;font-size:13px;font-weight:bold;cursor:pointer}
+.watch{background:#14b8a6;color:#071713}
+.download{border:1px solid #526078;color:white;background:transparent}
+.note,footer{color:#9eabc0;font-size:12px;line-height:1.7}
+footer{text-align:center;padding:25px;border-top:1px solid #273248}
+.status{text-align:center;color:#aab4c5;padding:20px}
+.status.error{color:#f87171}
+.spinner{display:inline-block;width:22px;height:22px;border:3px solid #344158;border-top-color:#14b8a6;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pagination{display:flex;justify-content:center;gap:8px;padding:12px 0 22px;flex-wrap:wrap}
+.pagination button{padding:8px 14px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
+.pagination button.current{background:#14b8a6;color:#071713;border-color:#14b8a6}
+.pagination button:disabled{opacity:.4;cursor:default}
+#detailBox,#torrentBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}
+.detailContent,.torrentContent{max-width:600px;margin:40px auto;background:#141c2b;padding:15px;border-radius:12px}
+.torrentItem{border:1px solid #273248;border-radius:10px;padding:12px;margin-bottom:10px}
+.torrentItem .t-title{font-size:13px;word-break:break-all}
+.torrentItem .t-meta{color:#9eabc0;font-size:11px;margin:6px 0;display:flex;flex-wrap:wrap;gap:10px}
+.badge{background:#1a2336;border-radius:4px;padding:2px 7px;font-size:11px;color:#5eead4}
+.src{color:#9eabc0;font-size:10px}
+#playerBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}
+.playerContent{max-width:900px;margin:25px auto;background:#141c2b;padding:15px;border-radius:12px}
+#moviePlayer{width:100%;max-height:70vh;background:black}
+.close{float:right;background:#14b8a6;border:0;border-radius:6px;padding:10px;cursor:pointer}
 
-// Movie search
-async function handleMovies(env, cfg, url, cors) {
-  const q = (
-    url.searchParams.get('q') || ''
-  ).trim();
-
-  const page = Math.max(
-    1,
-    parseInt(
-      url.searchParams.get('page') || '1', 10
-    )
-  );
-
-  if (!q) {
-    return json(
-      { error: 'Missing search query' },
-      400,
-      cors
-    );
-  }
-
-  if (q.length > 100) {
-    return json(
-      { error: 'Query too long' },
-      400,
-      cors
-    );
-  }
-
-  const provider = cfg.tmdbApiKey
-    ? 'tmdb'
-    : 'itunes';
-
-  const adapter = getMetadataAdapter(provider);
-
-  const key = 'movies:' + provider + ':' +
-    q.toLowerCase() +
-    (provider === 'tmdb' ? ':' + page : '');
-
-  let payload = await cacheGet(env, key);
-
-  if (!payload) {
-    payload = await adapter.search(cfg, q, page);
-    await cachePut(
-      env, key, payload, cfg.cacheTtl
-    );
-  }
-
-  if (provider === 'tmdb') {
-    return json(payload, 200, cors);
-  }
-
-  const perPage = payload.perPage || 20;
-  const start = (page - 1) * perPage;
-
-  return json({
-    page,
-    perPage,
-    totalPages: payload.totalPages || 1,
-    totalResults: payload.totalResults,
-    results: (payload.results || []).slice(
-      start, start + perPage
-    ),
-    source: payload.source,
-  }, 200, cors);
+/* Narrow phone screens */
+@media(max-width:340px){
+.movies{grid-template-columns:minmax(0,1fr)}
+.card{width:100%}
+.card>img,.poster{width:100%}
 }
+</style>
 
-// Torrent search
-async function handleTorrents(env, cfg, url, cors) {
-  const q = (
-    url.searchParams.get('q') || ''
-  ).trim();
-
-  const year = url.searchParams.get('year') || '';
-
-  if (!q) {
-    return json(
-      { error: 'Missing query' },
-      400,
-      cors
-    );
-  }
-
-  const query = year ? q + ' ' + year : q;
-
-  const key = 'torrents:' +
-    cfg.torrentProvider + ':' +
-    query.toLowerCase();
-
-  const cached = await cacheGet(env, key);
-
-  if (cached) {
-    return json(cached, 200, cors);
-  }
-
-  try {
-    const adapter = getTorrentAdapter(
-      cfg.torrentProvider
-    );
-
-    const data = await adapter.search(
-      cfg, query, 1
-    );
-
-    const seen = new Set();
-
-    const torrents = (data.torrents || [])
-      .filter(t => {
-        const k = (
-          t.infoHash ||
-          (
-            (t.title || '')
-              .toLowerCase()
-              .replace(/\W+/g, '') +
-            '|' + (t.sizeBytes || t.size)
-          )
-        ).toLowerCase();
-
-        if (seen.has(k)) {
-          return false;
-        }
-
-        seen.add(k);
-        return true;
-      })
-      .sort(
-        (a, b) => (b.seeds || 0) - (a.seeds || 0)
-      );
-
-    const payload = {
-      query,
-      torrents,
-      totalResults: torrents.length,
-      provider: cfg.torrentProvider,
-    };
-
-    await cachePut(
-      env, key, payload, cfg.torrentTtl
-    );
-
-    return json(payload, 200, cors);
-  } catch (e) {
-    return json({
-      query,
-      torrents: [],
-      totalResults: 0,
-      providerError:
-        'Torrent index temporarily unavailable (' +
-        e.message + ')',
-    }, 200, cors);
-  }
-}
-
-// Movie trailer from TMDB
-async function handleTrailer(env, cfg, url, cors) {
-  if (!cfg.tmdbApiKey) {
-    return json({ trailerUrl: null }, 200, cors);
-  }
-
-  const id = (
-    url.searchParams.get('id') || ''
-  ).trim();
-
-  if (!/^\d+$/.test(id)) {
-    return json({ trailerUrl: null }, 200, cors);
-  }
-
-  const key = 'trailer:' + id;
-  const cached = await cacheGet(env, key);
-
-  if (cached) {
-    return json(cached, 200, cors);
-  }
-
-  let payload = { trailerUrl: null };
-
-  try {
-    const data = await fetchJSON(
-      'https://api.themoviedb.org/3/movie/' +
-      id + '/videos?api_key=' +
-      encodeURIComponent(cfg.tmdbApiKey) +
-      '&language=en-US'
-    );
-
-    const vids = data.results || [];
-
-    const yt =
-      vids.find(v =>
-        v.site === 'YouTube' &&
-        v.type === 'Trailer' &&
-        v.official
-      ) ||
-      vids.find(v =>
-        v.site === 'YouTube' &&
-        v.type === 'Trailer'
-      ) ||
-      vids.find(v => v.site === 'YouTube');
-
-    if (yt) {
-      payload = {
-        trailerUrl:
-          'https://www.youtube.com/watch?v=' +
-          yt.key,
-      };
-    }
-  } catch (e) {
-    // Trailer is optional.
-  }
-
-  await cachePut(
-    env, key, payload, cfg.cacheTtl
-  );
-
-  return json(payload, 200, cors);
-}
-
-// KV caching with in-memory fallback
-const mem = new Map();
-
-async function cacheGet(env, key) {
-  const hit = mem.get(key);
-
-  if (hit && hit.exp > Date.now()) {
-    return hit.value;
-  }
-
-  if (env.CACHE) {
-    const raw = await env.CACHE.get(
-      'cw:' + key, 'json'
-    );
-
-    if (raw && raw.exp > Date.now()) {
-      mem.set(key, {
-        value: raw.value,
-        exp: raw.exp,
-      });
-
-      return raw.value;
-    }
-  }
-
-  return null;
-}
-
-async function cachePut(env, key, value, ttl) {
-  const exp = Date.now() + ttl * 1000;
-
-  mem.set(key, { value, exp });
-
-  if (env.CACHE) {
-    await env.CACHE.put(
-      'cw:' + key,
-      JSON.stringify({ value, exp }),
-      { expirationTtl: ttl }
-    );
-  }
-}
-
-async function fetchJSON(url) {
-  const res = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'CinexZone/1.0',
-    },
-  });
-
-  if (!res.ok) {
-    throw Object.assign(
-      new Error('Upstream returned ' + res.status),
-      { status: 502 }
-    );
-  }
-
-  const text = await res.text();
-
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    throw Object.assign(
-      new Error('Upstream returned invalid data'),
-      { status: 502 }
-    );
-  }
-}
-
-function json(obj, status, extra, more) {
-  return new Response(JSON.stringify(obj), {
-    status: status || 200,
-    headers: Object.assign(
-      {
-        'Content-Type':
-          'application/json; charset=utf-8',
-      },
-      extra || {},
-      more || {}
-    ),
-  });
-}
+</head>  
+<body>  
+<header>  
+  <div class="logo">Cine<span>Wave</span> 🎬</div>  
+  <p>Discover movies. Watch freely. Enjoy cinema.</p>  
+</header>  <main>  
+  <input id="search" class="search" placeholder="🔍 Search movies..." oninput="onSearchInput()">    <div id="searchSection" style="display:none">  
+    <h2 class="sectionTitle">🔍 Search Results</h2>  
+    <div id="movieGrid" class="movies"></div>  
+    <div id="status" class="status"></div>  
+    <nav id="pagination" class="pagination"></nav>  
+  </div>    <div id="latestSection">  
+    <h2 class="sectionTitle">🆕 Latest Movies</h2>  
+    <div id="latestGrid" class="movies"></div>  
+    <div id="latestStatus" class="status"><span class="spinner"></span>Loading latest movies…</div>  
+  </div>    <div id="popularSection" style="display:none">  
+    <h2 class="sectionTitle">🔥 Popular Movies</h2>  
+    <div id="popularGrid" class="movies"></div>  
+    <div id="popularStatus" class="status"></div>  
+    <div class="pagination"><button id="homeRefresh" type="button">↻ Refresh</button></div>  
+  </div>    <p class="note">CineWave is an independent movie catalog. Films are linked to their official sources. Please check each film's license before redistribution. <span class="src" id="tmdbAttribution" style="display:none">This product uses the TMDB API but is not endorsed or certified by TMDB.</span></p>  
+</main>  <div id="detailBox">  
+  <div class="detailContent">  
+    <button class="close" onclick="closeDetail()">✕ Close</button>  
+    <h3 id="detailTitle" style="margin:0 40px 12px 0"></h3>  
+    <div id="detailBody"></div>  
+    <button class="btn watch" id="detailTorrentsBtn" type="button">⬇ Show Torrents</button>  
+  </div>  
+</div>  <div id="torrentBox">  
+  <div class="torrentContent">  
+    <button class="close" onclick="closeTorrents()">✕ Close</button>  
+    <h3 id="torrentTitle" style="margin:0 40px 12px 0">Available Torrents</h3>  
+    <div id="torrentList"></div>  
+  </div>  
+</div>  <div id="playerBox">  
+  <div class="playerContent">  
+    <button class="close" onclick="closeMovie()">✕ Close</button>  
+    <h3 id="playerTitle">CineWave Player</h3>  
+    <video id="moviePlayer" controls playsinline preload="metadata">  
+      Your browser does not support video playback.  
+    </video>  
+    <p class="note">Video playback requires an internet connection.</p>  
+  </div>  
+</div>  <footer>© CineWave · Free Movie Discovery</footer>  <script>  
+const grid=document.getElementById('movieGrid'),  
+statusEl=document.getElementById('status'),  
+pagEl=document.getElementById('pagination');  
+  
+const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="445"><rect width="100%" height="100%" fill="#1a2336"/></svg>');  
+  
+const GENRE_MAP={  
+  28:'Action',12:'Adventure',16:'Animation',35:'Comedy',  
+  80:'Crime',99:'Documentary',18:'Drama',10751:'Family',  
+  14:'Fantasy',36:'History',27:'Horror',10402:'Music',  
+  9648:'Mystery',10749:'Romance',878:'Science Fiction',  
+  10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'  
+};  
+  
+let debounceTimer=null,currentQuery='',currentPage=1,totalPages=1,currentMovie=null;  
+  
+function genreNames(m){  
+  if(m.genres&&m.genres.length&&m.genres[0])return m.genres;  
+  return (m.genreIds||[]).map(id=>GENRE_MAP[id]).filter(Boolean);  
+}  
+  
+async function api(path,params){  
+  const res=await fetch(path+'?'+new URLSearchParams(params||{}));  
+  let body=null;  
+  try{body=await res.json()}catch(e){}  
+  if(!res.ok)throw new Error((body&&body.error)||('HTTP '+res.status));  
+  return body;  
+}  
+  
+function withTimeout(promise,ms){  
+  return Promise.race([  
+    promise,  
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out')),ms))  
+  ]);  
+}  
+  
+/* Homepage */  
+async function loadHome(){  
+  const ls=document.getElementById('latestStatus');  
+  const ps=document.getElementById('popularStatus');  
+  
+  ls.className='status';  
+  ps.className='status';  
+  ls.innerHTML='<span class="spinner"></span>Loading latest movies…';  
+  ps.innerHTML='';  
+  document.getElementById('latestGrid').innerHTML='';  
+  document.getElementById('popularGrid').innerHTML='';  
+  
+  try{  
+    const data=await withTimeout(api('/api/home'),12000);  
+  
+    if(data.mode==='tmdb'){  
+      document.getElementById('tmdbAttribution').style.display='inline';  
+      document.getElementById('popularSection').style.display='block';  
+    }  
+  
+    renderHome(document.getElementById('latestGrid'),ls,data.latest||[],data.latestSource);  
+  
+    if(data.popular&&data.popular.length){  
+      renderHome(document.getElementById('popularGrid'),ps,data.popular||[],data.popularSource);  
+    }  
+  
+    if(data.notice){  
+      const n=document.createElement('p');  
+      n.className='src';  
+      n.textContent=data.notice;  
+      ls.appendChild(n);  
+    }  
+  
+    if((!data.latest||!data.latest.length)&&(!data.popular||!data.popular.length)){  
+      ls.className='status error';  
+      ls.textContent='No movies available right now — tap Refresh to try again.';  
+    }  
+  }catch(e){  
+    ls.className='status error';  
+    ls.textContent='Could not load movies: '+e.message+' — tap Refresh below to try again.';  
+    ps.innerHTML='';  
+  }  
+}  
+  
+function renderHome(gridEl,statusEl,movies,source){  
+  if(!movies.length){statusEl.textContent='';return;}  
+  statusEl.textContent='Showing '+movies.length+' movies · via '+(source||'');  
+  for(const m of movies)gridEl.appendChild(movieCard(m));  
+}  
+  
+document.getElementById('homeRefresh').addEventListener('click',loadHome);  
+  
+/* Search */  
+function onSearchInput(){  
+  clearTimeout(debounceTimer);  
+  
+  debounceTimer=setTimeout(function(){  
+    currentQuery=document.getElementById('search').value.trim();  
+    currentPage=1;  
+  
+    if(currentQuery){  
+      document.getElementById('searchSection').style.display='block';  
+      loadMovies();  
+    }else{  
+      document.getElementById('searchSection').style.display='none';  
+      grid.innerHTML='';  
+      statusEl.textContent='';  
+      pagEl.innerHTML='';  
+    }  
+  },450);  
+}  
+  
+async function loadMovies(){  
+  statusEl.className='status';  
+  statusEl.innerHTML='<span class="spinner"></span>Searching…';  
+  grid.innerHTML='';  
+  pagEl.innerHTML='';  
+  
+  try{  
+    const data=await withTimeout(api('/api/movies',{q:currentQuery,page:currentPage}),12000);  
+    totalPages=data.totalPages||1;  
+  
+    if(!data.results||!data.results.length){  
+      statusEl.textContent='No movies found.';  
+      return;  
+    }  
+  
+    statusEl.textContent=data.totalResults+' results · page '+data.page+' of '+totalPages+' · via '+(data.source||'');  
+  
+    for(const m of data.results)grid.appendChild(movieCard(m));  
+    renderPagination();  
+  }catch(e){  
+    statusEl.className='status error';  
+    statusEl.textContent='Search failed: '+e.message;  
+  }  
+}  
+  
+/* Movie card with 300 × 445 poster */  
+function movieCard(m){  
+  const card=document.createElement('article');  
+  card.className='card';  
+  
+  const posterHtml=m.poster  
+    ?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">'  
+    :'<div class="poster">🎬</div>';  
+  
+  const genres=genreNames(m);  
+  
+  card.innerHTML=posterHtml  
+    +'<div class="info"><h3>'+esc(m.title)+'</h3><p>'+esc(m.year||'')+(genres.length?' · '+esc(genres.slice(0,2).join(', ')):'')+'</p>'  
+    +(m.rating?'<p class="rating">★ '+Number(m.rating).toFixed(1)+'</p>':'')  
+    +(m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')  
+    +'<button class="btn download" type="button">⬇ Torrents</button></div>';  
+  
+  card.addEventListener('click',function(){openDetail(m)});  
+  return card;  
+}  
+  
+function renderPagination(){  
+  function add(label,page,disabled,current){  
+    const b=document.createElement('button');  
+    b.textContent=label;  
+    if(current)b.className='current';  
+    b.disabled=!!disabled;  
+    b.addEventListener('click',function(){  
+      currentPage=page;  
+      loadMovies();  
+      window.scrollTo(0,0);  
+    });  
+    pagEl.appendChild(b);  
+  }  
+  
+  add('‹ Prev',currentPage-1,currentPage<=1);  
+  const start=Math.max(1,currentPage-2),end=Math.min(totalPages,start+4);  
+  for(let p=start;p<=end;p++)add(String(p),p,false,p===currentPage);  
+  add('Next ›',currentPage+1,currentPage>=totalPages);  
+}  
+  
+/* Movie details */  
+async function openDetail(m){  
+  currentMovie=m;  
+  document.getElementById('detailTitle').textContent=m.title+(m.year?' ('+m.year+')':'');  
+  
+  const body=document.getElementById('detailBody');  
+  let html='';  
+  
+  if(m.poster)html+='<img src="'+esc(m.poster)+'" alt="" style="width:120px;border-radius:8px;float:left;margin:0 12px 8px 0">';  
+  
+  const genres=genreNames(m);  
+  
+  html+='<p>'+esc(genres.join(', '))+(genres.length&&m.year?' · ':'')+esc(m.year||'')  
+    +(m.rating?' · <span class="rating">★ '+Number(m.rating).toFixed(1)+'</span>':'')  
+    +(m.releaseDate&&m.releaseDate.length>4?' · <span class="src">released '+esc(m.releaseDate.slice(0,10))+'</span>':'')+'</p>';  
+  
+  if(m.overview)html+='<p>'+esc(m.overview)+'</p>';  
+  if(m.artist)html+='<p class="src">Starring/Artist: '+esc(m.artist)+'</p>';  
+  if(m.trailerUrl)html+='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Trailer</button>';  
+  if(m.storeUrl)html+='<a class="btn download" href="'+esc(m.storeUrl)+'" target="_blank" rel="noopener">ⓘ View on Store</a>';  
+  
+  html+='<div id="trailerSlot"><p class="src">Checking for trailer…</p></div><div style="clear:both"></div>';  
+  
+  body.innerHTML=html;  
+  document.getElementById('detailBox').style.display='block';  
+  document.body.style.overflow='hidden';  
+  
+  if(m.source==='TMDB'&&/^\d+$/.test(m.id||'')){  
+    try{  
+      const data=await withTimeout(api('/api/trailer',{id:m.id}),8000);  
+      const slot=document.getElementById('trailerSlot');  
+  
+      if(data.trailerUrl){  
+        currentMovie.trailerUrl=data.trailerUrl;  
+        if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Official Trailer</button>';  
+      }else if(slot){  
+        slot.innerHTML='';  
+      }  
+    }catch(e){  
+      const slot=document.getElementById('trailerSlot');  
+      if(slot)slot.innerHTML='';  
+    }  
+  }else{  
+    const slot=document.getElementById('trailerSlot');  
+    if(slot)slot.innerHTML='';  
+  }  
+}  
+  
+function closeDetail(){  
+  document.getElementById('detailBox').style.display='none';  
+  document.body.style.overflow='';  
+}  
+  
+document.getElementById('detailTorrentsBtn').addEventListener('click',function(){  
+  closeDetail();  
+  if(currentMovie)openTorrents(currentMovie);  
+});  
+  
+/* Trailer */  
+function playTrailer(){  
+  if(!currentMovie||!currentMovie.trailerUrl)return;  
+  
+  closeDetail();  
+  
+  const v=document.getElementById('moviePlayer');  
+  document.getElementById('playerTitle').textContent=(currentMovie.title||'Movie')+' · Trailer';  
+  v.innerHTML='';  
+  v.src=currentMovie.trailerUrl;  
+  
+  document.getElementById('playerBox').style.display='block';  
+  document.body.style.overflow='hidden';  
+  
+  v.play().catch(function(){  
+    window.open(currentMovie.trailerUrl,'_blank','noopener');  
+    closeMovie();  
+  });  
+}  
+  
+/* Torrent lookup */  
+async function openTorrents(m){  
+  document.getElementById('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');  
+  
+  const list=document.getElementById('torrentList');  
+  list.innerHTML='<p class="status"><span class="spinner"></span>Searching torrents…</p>';  
+  
+  document.getElementById('torrentBox').style.display='block';  
+  document.body.style.overflow='hidden';  
+  
+  try{  
+    const data=await withTimeout(api('/api/torrents',{q:m.title,year:m.year||''}),12000);  
+  
+    if(data.providerError){  
+      list.innerHTML='<p class="status">'+esc(data.providerError)+'</p>';  
+      return;  
+    }  
+  
+    const torrents=data.torrents||[];  
+  
+    if(!torrents.length){  
+      list.innerHTML='<p class="status">No torrents found for this movie.</p>';  
+      return;  
+    }  
+  
+    list.innerHTML='';  
+  
+    for(const t of torrents.slice(0,15)){  
+      const item=document.createElement('div');  
+      item.className='torrentItem';  
+  
+      const dlBtn=t.torrentUrl  
+        ?'<a class="btn download" href="'+esc(t.torrentUrl)+'" target="_blank" rel="noopener">⬇ Download Torrent</a>'  
+        :'<a class="btn watch" href="'+esc(t.magnet||'#')+'" rel="noopener">🧲 Magnet Link</a>';  
+  
+      item.innerHTML='<div class="t-title">'+esc(t.title)+'</div>'  
+        +'<div class="t-meta">'+(t.resolution?'<span class="badge">'+esc(t.resolution)+'</span>':'')  
+        +'<span>'+esc(t.size||'')+'</span><span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span></div>'  
+        +(t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')  
+        +dlBtn;  
+  
+      list.appendChild(item);  
+    }  
+  }catch(e){  
+    list.innerHTML='<p class="status error">Torrent search unavailable: '+esc(e.message)+'</p>';  
+  }  
+}  
+  
+function closeTorrents(){  
+  document.getElementById('torrentBox').style.display='none';  
+  document.body.style.overflow='';  
+}  
+  
+function closeMovie(){  
+  const video=document.getElementById('moviePlayer');  
+  video.pause();  
+  video.currentTime=0;  
+  video.removeAttribute('src');  
+  video.load();  
+  
+  document.getElementById('playerBox').style.display='none';  
+  document.body.style.overflow='';  
+}  
+  
+const esc=function(s){  
+  return String(s==null?'':s).replace(/[&<>"']/g,function(c){  
+    return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]  
+  })  
+};  
+  
+loadHome();  
+</script>  </body>  
+</html>
