@@ -94,7 +94,11 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
 .t-title{font-size:13px;overflow-wrap:anywhere}
 .t-meta{color:var(--muted);font-size:11px;margin:6px 0;display:flex;flex-wrap:wrap;gap:10px}
 .badge{background:#292315;border-radius:4px;padding:3px 7px;font-size:11px;color:#f5d88f}
+.badge.q4k{color:#fbbf24}
+.badge.q1080{color:#f5d88f}
 .src{color:#9eabc0;font-size:10px}
+.torrentEmpty{text-align:center;padding:18px;color:var(--muted)}
+.torrentEmpty .retry{max-width:170px;margin:12px auto 0}
 
 /* CINEMATIC INTRO */
 #intro{
@@ -262,6 +266,7 @@ let currentQuery='';
 let currentPage=1;
 let totalPages=1;
 let currentMovie=null;
+let lastTorrentMovie=null;
 
 function genreNames(m){
  if(m.genres&&m.genres.length&&m.genres[0])return m.genres;
@@ -281,6 +286,13 @@ function withTimeout(p,ms){
   p,
   new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out')),ms))
  ]);
+}
+
+/* Only allow links whose protocol the API actually supplied and that is safe to render */
+function safeUrl(u){
+ if(typeof u!=='string')return '';
+ const v=u.trim();
+ return /^(https?:|magnet:)/i.test(v)?v:'';
 }
 
 async function loadHome(){
@@ -424,6 +436,13 @@ function movieCard(m){
   (m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')+
   '<button class="btn download" type="button">⬇ Sources</button></div>';
 
+ /* Torrent button must NOT bubble to the card click (which opens details) */
+ const srcBtn=card.querySelector('button.btn.download');
+ srcBtn.addEventListener('click',function(e){
+  e.stopPropagation();
+  openTorrents(m);
+ });
+
  card.addEventListener('click',()=>openDetail(m));
  return card;
 }
@@ -538,57 +557,82 @@ function playTrailer(){
 }
 
 async function openTorrents(m){
+ lastTorrentMovie=m;
  document.getElementById('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
 
  const list=document.getElementById('torrentList');
- list.innerHTML='<p class="status"><span class="spinner"></span>Searching sources…</p>';
+ list.innerHTML='<p class="status"><span class="spinner"></span>Searching sources for "'+esc(m.title)+'"'+(m.year?' ('+esc(m.year)+')':'')+'…</p>';
 
  document.getElementById('torrentBox').style.display='block';
  document.body.style.overflow='hidden';
 
  try{
   const data=await withTimeout(
-   api('/api/torrents',{q:m.title,year:m.year||''}),12000
+   api('/api/torrents',{q:m.title,year:m.year||''}),15000
   );
 
   if(data.providerError){
-   list.textContent=data.providerError;
+   list.innerHTML='<div class="torrentEmpty">🔒 '+esc(data.providerError)+
+    '<br><span class="src">The source index is temporarily unreachable. Movie search, details and trailers are unaffected.</span></div>'+
+    retryButtonHtml();
    return;
   }
 
-  const torrents=data.torrents||[];
-
-  if(!torrents.length){
-   list.innerHTML='<p class="status">No download sources found for this movie.</p>';
-   return;
-  }
-
-  list.innerHTML='';
-
-  for(const t of torrents.slice(0,15)){
-   const item=document.createElement('div');
-   item.className='torrentItem';
-
-   const url=t.torrentUrl||t.magnet||'';
-
-   const link=url
-    ?'<a class="btn download" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">⬇ Open Source (check license)</a>'
-    :'<span class="src">No source link supplied.</span>';
-
-   item.innerHTML=
-    '<div class="t-title">'+esc(t.title)+'</div>'+
-    '<div class="t-meta">'+
-    (t.resolution?'<span class="badge">'+esc(t.resolution)+'</span>':'')+
-    '<span>'+esc(t.size||'')+'</span>'+
-    '<span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span>'+
-    '</div>'+
-    (t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')+
-    link;
-
-   list.appendChild(item);
-  }
+  renderTorrents(data.torrents||[]);
  }catch(e){
-  list.innerHTML='<p class="status error">Source search unavailable: '+esc(e.message)+'</p>';
+  list.innerHTML='<p class="status error">Source search failed: '+esc(e.message)+' — try again in a moment.</p>'+retryButtonHtml();
+ }
+}
+
+function retryButtonHtml(){
+ return '<button class="btn download retry" type="button" onclick="retryTorrents()">↻ Retry</button>';
+}
+
+function retryTorrents(){
+ if(lastTorrentMovie)openTorrents(lastTorrentMovie);
+}
+
+function renderTorrents(torrents){
+ const list=document.getElementById('torrentList');
+
+ if(!torrents.length){
+  list.innerHTML='<div class="torrentEmpty">🫙 No verified sources matched this exact title and year.'+
+   '<br><span class="src">Results are filtered to prevent wrong-movie downloads.</span></div>'+retryButtonHtml();
+  return;
+ }
+
+ list.innerHTML='';
+
+ for(const t of torrents.slice(0,15)){
+  const item=document.createElement('div');
+  item.className='torrentItem';
+
+  const res=t.resolution||t.quality||'';
+  const badgeCls=/2160|4k/i.test(res)?'q4k':(/1080/i.test(res)?'q1080':'');
+  const dlUrl=safeUrl(t.torrentUrl);
+  const magnetUrl=safeUrl(t.magnet);
+
+  /* Only render a button when the API actually supplied a valid link */
+  const dlBtn=dlUrl
+   ?'<a class="btn download" href="'+esc(dlUrl)+'" target="_blank" rel="noopener noreferrer">⬇ Download .torrent</a>'
+   :'';
+  const magnetBtn=magnetUrl
+   ?'<a class="btn watch" href="'+esc(magnetUrl)+'" rel="noopener noreferrer">🧲 Magnet Link</a>'
+   :'';
+
+  const buttons=(dlBtn+' '+magnetBtn).trim()||'<span class="src">No source link supplied.</span>';
+
+  item.innerHTML=
+   '<div class="t-title">'+esc(t.title)+'</div>'+
+   '<div class="t-meta">'+
+   (res?'<span class="badge '+badgeCls+'">'+esc(res)+'</span>':'')+
+   '<span>'+esc(t.size||'')+'</span>'+
+   '<span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span>'+
+   '</div>'+
+   (t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')+
+   buttons;
+
+  list.appendChild(item);
  }
 }
 
