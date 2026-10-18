@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#090d16">
-<title>CinexZone — Movies, Trailers & Downloads</title>
+<title>𝘾𝙞𝙣𝙚𝙓 𝙕𝙤𝙣𝙚 — Movies & Trailers</title>
 <meta name="description" content="Discover movies, explore trailers, and find authorized movie sources.">
 
 <style>
@@ -14,10 +14,12 @@
 body{margin:0;background:var(--bg);color:#fff;font-family:Arial,Helvetica,sans-serif}
 body.lock{overflow:hidden}
 
-header{padding:18px 15px;background:linear-gradient(130deg,#111827,#171a23 65%,#292113);border-bottom:1px solid #6b5528;overflow:hidden}
-header p{margin:8px 0 0;color:#d6d9e2;font-size:13px}
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-.tags span{border:1px solid #705a2b;background:#161a22;border-radius:20px;padding:5px 8px;color:#f5d88f;font-size:10px}
+header{padding:20px 15px;background:linear-gradient(130deg,#111827,#171a23 65%,#292113);border-bottom:1px solid #6b5528;overflow:hidden}
+.brand{font-size:clamp(35px,8vw,76px);font-weight:1000;line-height:1.2;letter-spacing:-2px;white-space:nowrap;text-align:center;background:linear-gradient(110deg,#fff,#f3c766,#fff5d8,#dba83f,#fff);background-size:250% auto;background-clip:text;-webkit-background-clip:text;color:transparent;animation:shine 4s linear infinite;text-shadow:0 0 28px #f3c76620}
+@keyframes shine{to{background-position:250% center}}
+header p{margin:10px 0 0;color:#d6d9e2;font-size:13px;text-align:center}
+.tags{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tags span{border:1px solid #705a2b;background:#161a22;border-radius:20px;padding:6px 10px;color:#f5d88f;font-size:10px}
 
 main{max-width:1400px;margin:auto;padding:16px 14px}
 .search{width:100%;padding:13px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:10px 0 20px}
@@ -42,7 +44,6 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
 .status.error{color:#f87171}
 .spinner{display:inline-block;width:20px;height:20px;border:3px solid #344158;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-
 .pagination{display:flex;justify-content:center;gap:7px;padding:12px 0 22px;flex-wrap:wrap}
 .pagination button{padding:8px 12px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}
 .pagination button.current{background:var(--gold);color:#17130a;border-color:var(--gold)}
@@ -59,63 +60,17 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
 .badge{background:#292315;border-radius:4px;padding:3px 7px;font-size:11px;color:#f5d88f}
 .src{color:#9eabc0;font-size:10px}
 
-/* CINEMATIC INTRO */
-#intro{
- position:fixed;inset:0;z-index:1000;overflow:hidden;
- display:flex;align-items:center;justify-content:center;
- background:#050505;
- animation:introExit .8s ease 4.2s forwards;
- pointer-events:none
-}
-.cine-video{
- position:absolute;inset:0;width:100%;height:100%;
- object-fit:cover
-}
-.cine-mask{position:absolute;inset:0;width:100%;height:100%}
-.cine-mask text{
- font-family:Impact,"Arial Black",sans-serif;
- font-weight:1000;font-size:112px;letter-spacing:1px
-}
-.intro-caption{
- position:absolute;top:calc(50% + 105px);width:100%;
- text-align:center;color:#f5f5f5;font-size:11px;
- letter-spacing:4px;text-transform:uppercase;
- animation:captionIn .8s ease .7s both
-}
-.cine-light{
- position:absolute;inset:0 auto 0 -50%;width:30%;
- background:linear-gradient(90deg,transparent,#ffffff30,transparent);
- transform:skewX(-20deg);
- animation:lightSweep 2.3s ease-in-out .4s both
-}
+/* Cinematic loading intro: plain text logo, no SVG letter masking */
+#intro{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;overflow:hidden;background:radial-gradient(ellipse at center,#222019 0%,#090d16 55%,#020308 100%);animation:introExit .7s ease 3.7s forwards}
+.intro-glow{position:absolute;width:75vw;height:75vw;max-width:600px;max-height:600px;border-radius:50%;background:#f3c76612;filter:blur(60px);animation:pulse 2s ease-in-out infinite alternate}
+.intro-brand{position:relative;z-index:1;font-size:clamp(35px,9vw,78px);font-weight:1000;letter-spacing:-2px;white-space:nowrap;line-height:1.25;background:linear-gradient(110deg,#fff,#f3c766,#fff5d8,#e3aa39,#fff);background-size:250% auto;background-clip:text;-webkit-background-clip:text;color:transparent;animation:shine 3s linear infinite}
+.intro-line{height:2px;width:min(280px,65vw);margin:18px auto;background:linear-gradient(90deg,transparent,#f3c766,transparent);animation:lineIn 1s ease both}
+.intro-caption{position:relative;z-index:1;color:#f5d88f;font-size:clamp(10px,2.7vw,13px);letter-spacing:3px;animation:captionIn .8s ease .4s both}
+.intro-sub{position:relative;z-index:1;margin-top:15px;color:#b8c0d0;font-size:11px;letter-spacing:2px;animation:captionIn .8s ease .7s both}
 @keyframes introExit{to{opacity:0;visibility:hidden}}
-@keyframes captionIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-@keyframes lightSweep{from{left:-50%}to{left:130%}}
-
-/* LARGE FOOTAGE-FILLED HEADER LOGO */
-.header-cine-logo{
- position:relative;width:min(100%,700px);
- height:clamp(65px,12vw,115px);
- overflow:hidden;background:#090d16;isolation:isolate
-}
-.header-cine-logo .cine-mask text{font-size:112px}
-.header-cine-logo .cine-video{opacity:1}
-.header-cine-logo svg{pointer-events:none}
-
-/* FALLBACK IF VIDEO CANNOT LOAD */
-.cine-fallback{
- position:absolute;inset:0;display:flex;
- align-items:center;justify-content:center;
- font-family:Impact,"Arial Black",sans-serif;
- font-size:clamp(28px,7vw,65px);font-weight:1000;
- letter-spacing:1px;color:#fff;
- background:linear-gradient(110deg,#ef2638,#fff,#2563eb,#ef2638);
- background-size:300% 100%;
- background-clip:text;-webkit-background-clip:text;
- -webkit-text-fill-color:transparent;
- animation:fallbackShine 4s linear infinite
-}
-@keyframes fallbackShine{to{background-position:300% center}}
+@keyframes pulse{from{transform:scale(.8);opacity:.5}to{transform:scale(1.15);opacity:1}}
+@keyframes lineIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes captionIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 @media(max-width:600px){
  main{padding:10px 7px}
@@ -128,63 +83,30 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
  .btn{font-size:clamp(8px,2.3vw,10px);padding:7px 2px;margin-top:5px;border-radius:5px}
  .sectionTitle{margin:15px 0 9px}
  .search{font-size:14px;padding:12px}
- header{padding:15px 11px}
+ header{padding:17px 8px}
+ .brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}
  .tags{gap:5px}
  .tags span{font-size:9px;padding:4px 6px}
  .detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}
- .intro-caption{top:calc(50% + 60px);font-size:8px;letter-spacing:2px}
- .header-cine-logo{height:65px}
+ .intro-brand{font-size:clamp(30px,8.5vw,48px);letter-spacing:-1.5px}
+ .intro-caption{letter-spacing:2px}
 }
-@media(prefers-reduced-motion:reduce){
- .cine-light,.intro-caption,.cine-fallback{animation:none}
-}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
 </style>
 </head>
 
 <body class="lock">
 
-<!-- CINEXZONE INTRO: footage visible inside letters -->
-<div id="intro" aria-label="CinexZone cinematic intro">
- <video class="cine-video" autoplay muted loop playsinline preload="auto" aria-hidden="true">
-  <source src="/intro-montage.mp4" type="video/mp4">
- </video>
-
- <div class="cine-fallback">CINE X ZONE</div>
-
- <svg class="cine-mask" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-  <defs>
-   <mask id="introTextMask">
-    <rect width="1000" height="300" fill="white"/>
-    <text x="500" y="150" text-anchor="middle" dominant-baseline="middle"
-     textLength="940" lengthAdjust="spacingAndGlyphs" fill="black">CINE X ZONE</text>
-   </mask>
-  </defs>
-  <rect width="1000" height="300" fill="#050505" mask="url(#introTextMask)"/>
- </svg>
-
- <div class="cine-light"></div>
- <div class="intro-caption">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div>
+<div id="intro" aria-label="CinexZone loading intro">
+ <div class="intro-glow"></div>
+ <div class="intro-brand">𝘾𝙞𝙣𝙚𝙓 𝙕𝙤𝙣𝙚</div>
+ <div class="intro-line"></div>
+ <div class="intro-caption">WATCH · TORRENT · DOWNLOAD</div>
+ <div class="intro-sub">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div>
 </div>
 
 <header>
- <!-- HEADER LOGO: animated movie footage inside text -->
- <div class="header-cine-logo" aria-label="CineX Zone">
-  <video class="cine-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true">
-   <source src="/intro-montage.mp4" type="video/mp4">
-  </video>
-  <div class="cine-fallback">CINE X ZONE</div>
-  <svg class="cine-mask" viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-   <defs>
-    <mask id="headerTextMask">
-     <rect width="1000" height="300" fill="white"/>
-     <text x="500" y="150" text-anchor="middle" dominant-baseline="middle"
-      textLength="940" lengthAdjust="spacingAndGlyphs" fill="black">CINE X ZONE</text>
-    </mask>
-   </defs>
-   <rect width="1000" height="300" fill="#090d16" mask="url(#headerTextMask)"/>
-  </svg>
- </div>
-
+ <div class="brand">𝘾𝙞𝙣𝙚𝙓 𝙕𝙤𝙣𝙚</div>
  <p>Discover movies. Explore trailers. Find authorized watch &amp; download sources.</p>
  <div class="tags">
   <span>🎬 MOVIES</span><span>▶ TRAILERS</span><span>⬇ WATCH &amp; DOWNLOAD</span>
@@ -192,7 +114,7 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
 </header>
 
 <main>
- <input id="search" class="search" placeholder="🔍 Search movies..." oninput="onSearchInput()" aria-label="Search movies">
+ <input id="search" class="search" placeholder="🔍 Search movies..." aria-label="Search movies">
 
  <div id="searchSection" style="display:none">
   <h2 class="sectionTitle">🔍 Search Results</h2>
@@ -253,17 +175,9 @@ footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}
 const grid=document.getElementById('movieGrid');
 const statusEl=document.getElementById('status');
 const pagEl=document.getElementById('pagination');
+const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#f5d88f" font-size="22" text-anchor="middle" dominant-baseline="middle">MOVIE</text></svg>');
 
-const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent(
- '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#f5d88f" font-size="22" text-anchor="middle" dominant-baseline="middle">MOVIE</text></svg>'
-);
-
-const GENRE_MAP={
- 28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',
- 99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',
- 27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',
- 878:'Science Fiction',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'
-};
+const GENRE_MAP={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Science Fiction',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
 
 let debounceTimer=null,currentQuery='',currentPage=1,totalPages=1,currentMovie=null;
 
@@ -281,31 +195,13 @@ async function api(path,params){
 }
 
 function withTimeout(p,ms){
- return Promise.race([
-  p,
-  new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out')),ms))
- ]);
+ return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out')),ms))]);
 }
-
-/* Keep the video mask; if the video is missing, show the text fallback. */
-document.querySelectorAll('.cine-video').forEach(video=>{
- video.addEventListener('error',()=>{
-  const parent=video.parentElement;
-  const fallback=parent&&parent.querySelector('.cine-fallback');
-  if(fallback)fallback.style.display='flex';
- });
- video.addEventListener('loadeddata',()=>{
-  const parent=video.parentElement;
-  const fallback=parent&&parent.querySelector('.cine-fallback');
-  if(fallback)fallback.style.display='none';
- });
-});
 
 async function loadHome(){
  const ls=document.getElementById('latestStatus');
  const ps=document.getElementById('popularStatus');
- ls.className='status';
- ps.className='status';
+ ls.className='status';ps.className='status';
  ls.innerHTML='<span class="spinner"></span>Loading latest movies…';
  ps.innerHTML='';
  document.getElementById('latestGrid').innerHTML='';
@@ -313,47 +209,28 @@ async function loadHome(){
 
  try{
   const data=await withTimeout(api('/api/home'),12000);
-
   if(data.mode==='tmdb'){
    document.getElementById('tmdbAttribution').style.display='inline';
    document.getElementById('popularSection').style.display='block';
   }
-
   renderHome(document.getElementById('latestGrid'),ls,data.latest||[],data.latestSource);
-
   if(data.popular&&data.popular.length){
    document.getElementById('popularSection').style.display='block';
    renderHome(document.getElementById('popularGrid'),ps,data.popular,data.popularSource);
   }
-
   if(data.notice){
-   const n=document.createElement('p');
-   n.className='src';
-   n.textContent=data.notice;
-   ls.appendChild(n);
+   const n=document.createElement('p');n.className='src';n.textContent=data.notice;ls.appendChild(n);
   }
-
   if(!(data.latest||[]).length&&!(data.popular||[]).length){
    ls.className='status error';
    ls.textContent='No movies available right now — tap Refresh to try again.';
-   const b=document.createElement('button');
-   b.className='btn download';
-   b.textContent='↻ Refresh movies';
-   b.style.maxWidth='190px';
-   b.style.margin='10px auto';
-   b.onclick=loadHome;
-   ls.appendChild(b);
-
-   if(data.notice){
-    const n=document.createElement('p');
-    n.className='src';
-    n.textContent=data.notice;
-    ls.appendChild(n);
-   }
+   const b=document.createElement('button');b.className='btn download';b.textContent='↻ Refresh movies';b.style.maxWidth='190px';b.style.margin='10px auto';b.onclick=loadHome;ls.appendChild(b);
+   if(data.notice){const n=document.createElement('p');n.className='src';n.textContent=data.notice;ls.appendChild(n);}
   }
  }catch(e){
   ls.className='status error';
   ls.textContent='Could not load movies: '+e.message+' — try Refresh.';
+  const b=document.createElement('button');b.className='btn download';b.textContent='↻ Refresh';b.style.maxWidth='150px';b.style.margin='10px auto';b.onclick=loadHome;ls.appendChild(b);
   ps.innerHTML='';
  }
 }
@@ -366,7 +243,7 @@ function renderHome(g,s,movies,source){
 
 document.getElementById('homeRefresh').addEventListener('click',loadHome);
 
-function onSearchInput(){
+document.getElementById('search').addEventListener('input',function(){
  clearTimeout(debounceTimer);
  debounceTimer=setTimeout(function(){
   currentQuery=document.getElementById('search').value.trim();
@@ -376,69 +253,45 @@ function onSearchInput(){
    loadMovies();
   }else{
    document.getElementById('searchSection').style.display='none';
-   grid.innerHTML='';
-   statusEl.textContent='';
-   pagEl.innerHTML='';
+   grid.innerHTML='';statusEl.textContent='';pagEl.innerHTML='';
   }
  },450);
-}
+});
 
 async function loadMovies(){
  statusEl.className='status';
  statusEl.innerHTML='<span class="spinner"></span>Searching…';
- grid.innerHTML='';
- pagEl.innerHTML='';
-
+ grid.innerHTML='';pagEl.innerHTML='';
  try{
   const data=await withTimeout(api('/api/movies',{q:currentQuery,page:currentPage}),12000);
   totalPages=data.totalPages||1;
-
-  if(!data.results||!data.results.length){
-   statusEl.textContent='No movies found.';
-   return;
-  }
-
+  if(!data.results||!data.results.length){statusEl.textContent='No movies found.';return;}
   statusEl.textContent=data.totalResults+' results · page '+data.page+' of '+totalPages+' · via '+(data.source||'');
   for(const m of data.results)grid.appendChild(movieCard(m));
   renderPagination();
  }catch(e){
-  statusEl.className='status error';
-  statusEl.textContent='Search failed: '+e.message;
+  statusEl.className='status error';statusEl.textContent='Search failed: '+e.message;
  }
 }
 
 function movieCard(m){
- const card=document.createElement('article');
- card.className='card';
-
- const poster=m.poster
-  ?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">'
-  :'<div class="poster">🎬</div>';
-
+ const card=document.createElement('article');card.className='card';
+ const poster=m.poster?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">':'<div class="poster">🎬</div>';
  const genres=genreNames(m);
-
  card.innerHTML=poster+'<div class="info"><h3>'+esc(m.title)+'</h3><p>'+esc(m.year||'')+(genres.length?' · '+esc(genres.slice(0,2).join(', ')):'')+'</p>'+(m.rating?'<p class="rating">★ '+Number(m.rating).toFixed(1)+'</p>':'')+(m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')+'<button class="btn download" type="button">⬇ Sources</button></div>';
-
  card.addEventListener('click',()=>openDetail(m));
  return card;
 }
 
 function renderPagination(){
  function add(label,page,disabled,current){
-  const b=document.createElement('button');
-  b.textContent=label;
-  if(current)b.className='current';
-  b.disabled=!!disabled;
-  b.addEventListener('click',()=>{
-   currentPage=page;
-   loadMovies();
-   window.scrollTo(0,0);
-  });
+  const b=document.createElement('button');b.textContent=label;
+  if(current)b.className='current';b.disabled=!!disabled;
+  b.addEventListener('click',()=>{currentPage=page;loadMovies();window.scrollTo(0,0);});
   pagEl.appendChild(b);
  }
  add('‹ Prev',currentPage-1,currentPage<=1);
- const start=Math.max(1,currentPage-2);
- const end=Math.min(totalPages,start+4);
+ const start=Math.max(1,currentPage-2),end=Math.min(totalPages,start+4);
  for(let p=start;p<=end;p++)add(String(p),p,false,p===currentPage);
  add('Next ›',currentPage+1,currentPage>=totalPages);
 }
@@ -446,123 +299,66 @@ function renderPagination(){
 async function openDetail(m){
  currentMovie=m;
  document.getElementById('detailTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
- const body=document.getElementById('detailBody');
- let html='';
-
+ const body=document.getElementById('detailBody');let html='';
  if(m.poster)html+='<img src="'+esc(m.poster)+'" alt="" style="width:120px;max-width:40%;border-radius:8px;float:left;margin:0 12px 8px 0">';
-
  const genres=genreNames(m);
-
  html+='<p>'+esc(genres.join(', '))+(genres.length&&m.year?' · ':'')+esc(m.year||'')+(m.rating?' · <span class="rating">★ '+Number(m.rating).toFixed(1)+'</span>':'')+(m.releaseDate&&m.releaseDate.length>4?' · <span class="src">released '+esc(m.releaseDate.slice(0,10))+'</span>':'')+'</p>';
-
  if(m.overview)html+='<p>'+esc(m.overview)+'</p>';
  if(m.artist)html+='<p class="src">Starring/Artist: '+esc(m.artist)+'</p>';
  if(m.trailerUrl)html+='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Trailer</button>';
  if(m.storeUrl)html+='<a class="btn download" href="'+esc(m.storeUrl)+'" target="_blank" rel="noopener">ⓘ View Official Source</a>';
-
  html+='<div id="trailerSlot"><p class="src">Checking for trailer…</p></div><div style="clear:both"></div>';
  body.innerHTML=html;
-
- document.getElementById('detailBox').style.display='block';
- document.body.style.overflow='hidden';
+ document.getElementById('detailBox').style.display='block';document.body.style.overflow='hidden';
 
  if(m.source==='TMDB'&&/^\d+$/.test(m.id||'')){
   try{
    const data=await withTimeout(api('/api/trailer',{id:m.id}),8000);
    const slot=document.getElementById('trailerSlot');
-
-   if(data.trailerUrl){
-    currentMovie.trailerUrl=data.trailerUrl;
-    if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Official Trailer</button>';
-   }else if(slot)slot.innerHTML='';
-  }catch(e){
-   const slot=document.getElementById('trailerSlot');
-   if(slot)slot.innerHTML='';
-  }
- }else{
-  const slot=document.getElementById('trailerSlot');
-  if(slot)slot.innerHTML='';
- }
+   if(data.trailerUrl){currentMovie.trailerUrl=data.trailerUrl;if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Official Trailer</button>';}
+   else if(slot)slot.innerHTML='';
+  }catch(e){const slot=document.getElementById('trailerSlot');if(slot)slot.innerHTML='';}
+ }else{const slot=document.getElementById('trailerSlot');if(slot)slot.innerHTML='';}
 }
 
-function closeDetail(){
- document.getElementById('detailBox').style.display='none';
- document.body.style.overflow='';
-}
-
-document.getElementById('detailTorrentsBtn').addEventListener('click',()=>{
- closeDetail();
- if(currentMovie)openTorrents(currentMovie);
-});
+function closeDetail(){document.getElementById('detailBox').style.display='none';document.body.style.overflow='';}
+document.getElementById('detailTorrentsBtn').addEventListener('click',()=>{closeDetail();if(currentMovie)openTorrents(currentMovie);});
 
 function playTrailer(){
  if(!currentMovie||!currentMovie.trailerUrl)return;
  closeDetail();
  const v=document.getElementById('moviePlayer');
  document.getElementById('playerTitle').textContent=(currentMovie.title||'Movie')+' · Trailer';
- v.innerHTML='';
- v.src=currentMovie.trailerUrl;
- document.getElementById('playerBox').style.display='block';
- document.body.style.overflow='hidden';
- v.play().catch(()=>{
-  window.open(currentMovie.trailerUrl,'_blank','noopener');
-  closeMovie();
- });
+ v.innerHTML='';v.src=currentMovie.trailerUrl;
+ document.getElementById('playerBox').style.display='block';document.body.style.overflow='hidden';
+ v.play().catch(()=>{window.open(currentMovie.trailerUrl,'_blank','noopener');closeMovie();});
 }
 
 async function openTorrents(m){
  document.getElementById('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
  const list=document.getElementById('torrentList');
  list.innerHTML='<p class="status"><span class="spinner"></span>Searching sources…</p>';
- document.getElementById('torrentBox').style.display='block';
- document.body.style.overflow='hidden';
-
+ document.getElementById('torrentBox').style.display='block';document.body.style.overflow='hidden';
  try{
   const data=await withTimeout(api('/api/torrents',{q:m.title,year:m.year||''}),12000);
-
-  if(data.providerError){
-   list.innerHTML='<p class="status">'+esc(data.providerError)+'</p>';
-   return;
-  }
-
+  if(data.providerError){list.textContent=data.providerError;return;}
   const torrents=data.torrents||[];
-  if(!torrents.length){
-   list.innerHTML='<p class="status">No download sources found for this movie.</p>';
-   return;
-  }
-
+  if(!torrents.length){list.innerHTML='<p class="status">No download sources found for this movie.</p>';return;}
   list.innerHTML='';
-
   for(const t of torrents.slice(0,15)){
-   const item=document.createElement('div');
-   item.className='torrentItem';
+   const item=document.createElement('div');item.className='torrentItem';
    const url=t.torrentUrl||t.magnet||'';
-   const link=url
-    ?'<a class="btn download" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">⬇ Open Source (check license)</a>'
-    :'<span class="src">No source link supplied.</span>';
-
+   const link=url?'<a class="btn download" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">⬇ Open Source (check license)</a>':'<span class="src">No source link supplied.</span>';
    item.innerHTML='<div class="t-title">'+esc(t.title)+'</div><div class="t-meta">'+(t.resolution?'<span class="badge">'+esc(t.resolution)+'</span>':'')+'<span>'+esc(t.size||'')+'</span><span>↑ '+(t.seeds!=null?t.seeds:0)+' · ↓ '+(t.peers!=null?t.peers:0)+'</span></div>'+(t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')+link;
-
    list.appendChild(item);
   }
- }catch(e){
-  list.innerHTML='<p class="status error">Source search unavailable: '+esc(e.message)+'</p>';
- }
+ }catch(e){list.innerHTML='<p class="status error">Source search unavailable: '+esc(e.message)+'</p>';}
 }
 
-function closeTorrents(){
- document.getElementById('torrentBox').style.display='none';
- document.body.style.overflow='';
-}
-
+function closeTorrents(){document.getElementById('torrentBox').style.display='none';document.body.style.overflow='';}
 function closeMovie(){
- const v=document.getElementById('moviePlayer');
- v.pause();
- v.currentTime=0;
- v.removeAttribute('src');
- v.load();
- document.getElementById('playerBox').style.display='none';
- document.body.style.overflow='';
+ const v=document.getElementById('moviePlayer');v.pause();v.currentTime=0;v.removeAttribute('src');v.load();
+ document.getElementById('playerBox').style.display='none';document.body.style.overflow='';
 }
 
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -571,7 +367,7 @@ setTimeout(()=>{
  const intro=document.getElementById('intro');
  if(intro)intro.remove();
  document.body.classList.remove('lock');
-},5000);
+},4500);
 
 loadHome();
 </script>
