@@ -1,4 +1,3 @@
-
 import {
   getMetadataAdapter,
   getTorrentAdapter,
@@ -60,14 +59,16 @@ function readConfig(env) {
     rlMax: positiveInt(env.RATE_LIMIT_MAX, 60),
     rlWindow: positiveInt(env.RATE_LIMIT_WINDOW, 60),
     torrentProvider: primaryProvider,
-    torrentFallbacks: [...new Set([primaryProvider, 'tpb', 'torrentscsv'])],
+    torrentFallbacks: [...new Set([primaryProvider, 'tpb', 'knaben', 'torrentscsv'])],
     torrentTimeoutMs: positiveInt(env.TORRENT_TIMEOUT_MS, 12000),
     torrentRetries: nonNegativeInt(env.TORRENT_RETRIES, 2),
     retryBaseMs: positiveInt(env.RETRY_BASE_MS, 600),
-    cooldownTtl: positiveInt(env.PROVIDER_COOLDOWN_TTL, 10),
+    // FIX: KV minimum TTL is 60s. Old default of 10 caused
+    // "Invalid expiration_ttl of 10. Expiration TTL must be at least 60."
+    cooldownTtl: Math.max(60, positiveInt(env.PROVIDER_COOLDOWN_TTL, 60)),
     torrentMinResults: positiveInt(env.TORRENT_MIN_RESULTS, 10),
-    // 90 days. Override with TORRENT_BACKUP_TTL (seconds) if desired.
-    torrentBackupTtl: positiveInt(env.TORRENT_BACKUP_TTL, 7776000),
+    // FIX: 39 days (was 7776000 / 90 days). Override with TORRENT_BACKUP_TTL (seconds).
+    torrentBackupTtl: positiveInt(env.TORRENT_BACKUP_TTL, 3369600),
     jackettBase: env.JACKETT_BASE_URL || '',
     jackettKey: env.JACKETT_API_KEY || '',
     jackettIndexer: env.JACKETT_INDEXER || 'all',
@@ -92,7 +93,10 @@ async function withLimits(env, cfg, cors, fn) {
     const bucket = Math.floor(Date.now() / 1000 / cfg.rlWindow);
     const key = 'rl:global:' + bucket;
     const count = (parseInt((await env.CACHE.get(key)) || '0', 10) || 0) + 1;
-    await env.CACHE.put(key, String(count), { expirationTtl: cfg.rlWindow });
+    // FIX: clamp TTL to KV minimum of 60 and never let a KV failure break the request.
+    try {
+      await env.CACHE.put(key, String(count), { expirationTtl: Math.max(60, cfg.rlWindow) });
+    } catch { /* non-fatal */ }
     if (count > cfg.rlMax) {
       return json({ error: 'Rate limit exceeded. Please wait a minute.' },
         429, cors, { 'Retry-After': String(cfg.rlWindow) });
@@ -141,17 +145,21 @@ async function isCoolingDown(env, provider) {
 
 async function setCooldown(env, provider, ttl, retryAfterSec) {
   if (!env.CACHE) return;
-  let seconds = ttl;
+  let seconds = Math.max(60, ttl); // FIX: KV minimum TTL is 60s
   if (retryAfterSec && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
-    seconds = Math.min(Math.max(retryAfterSec, ttl), 900);
+    seconds = Math.min(Math.max(retryAfterSec, 60), 900);
   }
-  await env.CACHE.put('cooldown:' + provider,
-    JSON.stringify({ until: Date.now() + seconds * 1000 }),
-    { expirationTtl: seconds });
+  try {
+    await env.CACHE.put('cooldown:' + provider,
+      JSON.stringify({ until: Date.now() + seconds * 1000 }),
+      { expirationTtl: seconds });
+  } catch { /* non-fatal */ }
 }
 async function clearCooldown(env, provider) {
   if (!env.CACHE) return;
-  await env.CACHE.put('cooldown:' + provider, JSON.stringify({ until: 0 }), { expirationTtl: 60 });
+  try {
+    await env.CACHE.put('cooldown:' + provider, JSON.stringify({ until: 0 }), { expirationTtl: 60 });
+  } catch { /* non-fatal */ }
 }
 function isRetryableError(e) {
   if (!e) return false;
@@ -375,7 +383,7 @@ async function handleTorrents(env, cfg, url, cors) {
       query: q, year, torrents, totalResults: torrents.length,
       provider: payload.provider, savedAt: new Date().toISOString(),
     };
-    await cachePut(env, backupKey, backupPayload, cfg.torrentBackupTtl);
+    await cachePut(env, backupKey, backupPayload, cfg.torrentBackupTtl); // 39 days
   }
 
   await cachePut(env, key, payload, payload.providerError ? 120 : cfg.torrentTtl);
@@ -436,6 +444,8 @@ async function handleTrailer(env, cfg, url, cors) {
 }
 
 // KV-backed cache. KV values use a wrapper to preserve application expiry.
+// FIX: Cloudflare KV requires expirationTtl >= 60. TTLs are clamped to 60 and
+// KV failures are caught so the response never breaks.
 const mem = new Map();
 async function cacheGet(env, key) {
   const hit = mem.get(key);
@@ -453,14 +463,19 @@ async function cacheGet(env, key) {
 }
 
 async function cachePut(env, key, value, ttl) {
-  const safeTtl = positiveInt(ttl, 1);
+  const safeTtl = Math.max(60, positiveInt(ttl, 60)); // FIX: KV minimum is 60
   const exp = Date.now() + safeTtl * 1000;
   mem.set(key, { value, exp });
 
   if (env.CACHE) {
-    await env.CACHE.put('cw:' + key, JSON.stringify({ value, exp }), {
-      expirationTtl: safeTtl,
-    });
+    try {
+      await env.CACHE.put('cw:' + key, JSON.stringify({ value, exp }), {
+        expirationTtl: safeTtl,
+      });
+    } catch (e) {
+      // FIX: never let a KV failure break the response.
+      console.error('KV put failed (memory cache still holds value):', e && e.message);
+    }
   }
 }
 
