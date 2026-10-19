@@ -45,13 +45,11 @@ export default {
           handleTrailer(env, cfg, url, cors));
       }
 
-      // Internet Archive movie search
       if (url.pathname === '/api/archive') {
         return await withLimits(env, cfg, cors, () =>
           handleArchiveSearch(env, cfg, url, cors));
       }
 
-      // Internet Archive movie details and playable files
       if (url.pathname === '/api/archive/details') {
         return await withLimits(env, cfg, cors, () =>
           handleArchiveDetails(env, cfg, url, cors));
@@ -454,23 +452,37 @@ async function handleMovies(env, cfg, url, cors) {
 
 // ---------------- INTERNET ARCHIVE ----------------
 
-// Search public-domain / rights-cleared movie candidates.
-// Search results are NOT proof that a title is legally reusable.
+// Improved movie-title search.
+// Search results do not prove that a film is public domain or reusable.
 async function handleArchiveSearch(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
   const page = Math.max(
-    1, parseInt(url.searchParams.get('page') || '1', 10) || 1
+    1,
+    parseInt(url.searchParams.get('page') || '1', 10) || 1
   );
 
   if (!q) {
-    return json({ error: 'Missing search query. Use ?q=movie name' }, 400, cors);
+    return json({
+      error: 'Missing search query. Use ?q=movie name',
+    }, 400, cors);
   }
 
   if (q.length > 100) {
     return json({ error: 'Query too long' }, 400, cors);
   }
 
-  const cacheKey = 'archive:search:' + q.toLowerCase() + ':' + page;
+  const safeQuery = q
+    .replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!safeQuery) {
+    return json({ error: 'Invalid search query' }, 400, cors);
+  }
+
+  const cacheKey =
+    'archive:search:v3:' + q.toLowerCase() + ':' + page;
+
   const cached = await cacheGet(env, cacheKey);
 
   if (cached) {
@@ -481,74 +493,126 @@ async function handleArchiveSearch(env, cfg, url, cors) {
     'https://archive.org/advancedsearch.php'
   );
 
-  // Escape query punctuation before inserting it into the IA search query.
-  const safeQuery = q.replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
+  // Search title fields instead of descriptions to reduce unrelated results.
   searchUrl.searchParams.set(
     'q',
-    'mediatype:movies AND (title:(' + safeQuery + ') OR ' +
-    'description:(' + safeQuery + '))'
+    'mediatype:movies AND title:(' + safeQuery + ')'
   );
-  searchUrl.searchParams.set('fl[]', 'identifier');
-  searchUrl.searchParams.append('fl[]', 'title');
-  searchUrl.searchParams.append('fl[]', 'year');
-  searchUrl.searchParams.append('fl[]', 'description');
-  searchUrl.searchParams.append('fl[]', 'mediatype');
-  searchUrl.searchParams.append('fl[]', 'licenseurl');
-  searchUrl.searchParams.set('rows', '20');
-  searchUrl.searchParams.set('page', String(page));
+
+  [
+    'identifier',
+    'title',
+    'year',
+    'description',
+    'mediatype',
+    'licenseurl'
+  ].forEach(field => {
+    searchUrl.searchParams.append('fl[]', field);
+  });
+
+  // Fetch a larger batch, then filter and return up to 20 results.
+  const rows = 100;
+  const start = (page - 1) * rows;
+
+  searchUrl.searchParams.set('rows', String(rows));
+  searchUrl.searchParams.set('start', String(start));
   searchUrl.searchParams.set('output', 'json');
   searchUrl.searchParams.set('sort[]', 'downloads desc');
 
-  const data = await fetchJSON(searchUrl.toString());
-  const docs = data.response && Array.isArray(data.response.docs)
-    ? data.response.docs
+  let data;
+
+  try {
+    data = await fetchJSON(searchUrl.toString());
+  } catch (e) {
+    console.error('Internet Archive search failed:', e.message);
+
+    return json({
+      error: 'Internet Archive search is temporarily unavailable.',
+      details: e.message || 'Upstream error',
+    }, 502, cors);
+  }
+
+  const response = data?.response || {};
+  const docs = Array.isArray(response.docs)
+    ? response.docs
     : [];
 
-  const results = docs.map(item => {
-    const identifier = String(item.identifier || '');
+  const excludedPatterns = [
+    /\bgameplay\b/i,
+    /\blongplay\b/i,
+    /\bwalkthrough\b/i,
+    /\bspeedrun\b/i,
+    /\bvideo game\b/i,
+    /\bgame review\b/i,
+    /\bgame trailer\b/i,
+    /\bfull episode\b/i,
+    /\btv episode\b/i,
+    /\btv series\b/i,
+    /\bseason\s*\d+\b/i,
+    /\bepisode\s*\d+\b/i,
+    /\bmovie trailer\b/i,
+    /\bfilm trailer\b/i,
+    /\bbehind the scenes\b/i,
+    /\bmaking of\b/i,
+    /\binterview\b/i,
+    /\bpodcast\b/i
+  ];
 
-    return {
-      id: identifier,
-      identifier,
-      title: item.title || identifier,
-      year: item.year || '',
-      overview: item.description || '',
-      source: 'Internet Archive',
-      mediatype: item.mediatype || 'movies',
-      licenseUrl: item.licenseurl || null,
-      detailsUrl: 'https://archive.org/details/' +
-        encodeURIComponent(identifier),
-      apiDetailsUrl: '/api/archive/details?id=' +
-        encodeURIComponent(identifier),
-      rightsNote: 'Check the item details and licence before reusing.',
-    };
-  }).filter(item => item.identifier);
+  const results = docs
+    .map(item => {
+      const identifier = String(item.identifier || '').trim();
+
+      if (!identifier) return null;
+
+      const title = String(item.title || identifier).trim();
+
+      return {
+        id: identifier,
+        identifier,
+        title,
+        year: item.year || '',
+        overview: item.description || '',
+        source: 'Internet Archive',
+        mediatype: item.mediatype || 'movies',
+        licenseUrl: item.licenseurl || null,
+        detailsUrl:
+          'https://archive.org/details/' +
+          encodeURIComponent(identifier),
+        apiDetailsUrl:
+          '/api/archive/details?id=' +
+          encodeURIComponent(identifier),
+        rightsNote:
+          'Check the item details and licence before reusing.',
+      };
+    })
+    .filter(Boolean)
+    .filter(item =>
+      !excludedPatterns.some(pattern => pattern.test(item.title))
+    )
+    .slice(0, 20);
+
+  const totalResults = Number(response.numFound || 0);
 
   const payload = {
     query: q,
     page,
     perPage: 20,
-    totalResults: data.response?.numFound || 0,
-    totalPages: Math.max(
-      1,
-      Math.ceil((data.response?.numFound || 0) / 20)
-    ),
+    totalResults,
+    totalPages: Math.max(1, Math.ceil(totalResults / 20)),
     source: 'Internet Archive',
     results,
-    notice: 'Search results do not guarantee public-domain status or permission to redistribute.',
+    notice:
+      'Search results do not guarantee public-domain status or permission to redistribute. Verify each item’s rights before reuse.',
   };
 
   await cachePut(env, cacheKey, payload, cfg.cacheTtl);
+
   return json(payload, 200, cors);
 }
 
 async function handleArchiveDetails(env, cfg, url, cors) {
   const id = (url.searchParams.get('id') || '').trim();
 
-  // Only accept normal Internet Archive identifiers.
   if (!id || id.length > 200 || !/^[a-zA-Z0-9._-]+$/.test(id)) {
     return json({
       error: 'Invalid identifier',
@@ -578,7 +642,7 @@ async function handleArchiveDetails(env, cfg, url, cors) {
       const format = String(file.format || '').toLowerCase();
 
       return videoExtensions.test(name) ||
-        /mpeg4|h\.264|h\.264|ogg video|webm|quicktime/i.test(format);
+        /mpeg4|h\.264|ogg video|webm|quicktime/i.test(format);
     })
     .filter(file => {
       const name = String(file.name || '');
@@ -621,7 +685,8 @@ async function handleArchiveDetails(env, cfg, url, cors) {
     source: 'Internet Archive',
     videoFiles,
     playable: videoFiles.length > 0,
-    rightsNotice: 'Rights information may be incomplete or inaccurate. Verify the item licence and permissions before downloading, reusing, or redistributing.',
+    rightsNotice:
+      'Rights information may be incomplete or inaccurate. Verify the item licence and permissions before downloading, reusing, or redistributing.',
   };
 
   await cachePut(env, cacheKey, payload, cfg.cacheTtl);
@@ -683,6 +748,7 @@ async function handleTorrents(env, cfg, url, cors) {
       if (items.length) {
         merged.push(...items);
         usedProviders.push(providerName);
+
         await clearCooldown(env, providerName);
 
         if (merged.length >= cfg.torrentMinResults) break;
