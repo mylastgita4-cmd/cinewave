@@ -67,7 +67,7 @@ function readConfig(env) {
     // "Invalid expiration_ttl of 10. Expiration TTL must be at least 60."
     cooldownTtl: Math.max(60, positiveInt(env.PROVIDER_COOLDOWN_TTL, 60)),
     torrentMinResults: positiveInt(env.TORRENT_MIN_RESULTS, 10),
-    // FIX: 39 days (was 7776000 / 90 days). Override with TORRENT_BACKUP_TTL (seconds).
+    // FIX: 39 days. Override with TORRENT_BACKUP_TTL (seconds).
     torrentBackupTtl: positiveInt(env.TORRENT_BACKUP_TTL, 3369600),
     jackettBase: env.JACKETT_BASE_URL || '',
     jackettKey: env.JACKETT_API_KEY || '',
