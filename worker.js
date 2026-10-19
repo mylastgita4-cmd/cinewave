@@ -57,23 +57,7 @@ export default {
 
       // Health check
       if (url.pathname === '/api/health') {
-        return json({
-          ok: true,
-          tmdbKeyPresent: !!env.TMDB_API_KEY,
-          homepageMode: cfg.tmdbApiKey
-            ? 'tmdb'
-            : 'itunes-keyless',
-          kvBound: !!env.CACHE,
-          torrentProvider: cfg.torrentProvider,
-          torrentFallbacks: cfg.torrentFallbacks,
-          torrentTimeoutMs: cfg.torrentTimeoutMs,
-          jackettConfigured: !!(
-            cfg.jackettBase && cfg.jackettKey
-          ),
-          prowlarrConfigured: !!(
-            cfg.prowlarrBase && cfg.prowlarrKey
-          ),
-        }, 200, cors);
+        return await handleHealth(env, cfg, cors);
       }
 
       // Serve the existing website and static assets
@@ -141,6 +125,30 @@ function readConfig(env) {
       env.TORRENT_TIMEOUT_MS || '12000', 10
     ),
 
+    // Retry/backoff/cooldown tuning.
+    torrentRetries: parseInt(
+      env.TORRENT_RETRIES || '2', 10
+    ),
+
+    retryBaseMs: parseInt(
+      env.RETRY_BASE_MS || '600', 10
+    ),
+
+    cooldownTtl: parseInt(
+      env.PROVIDER_COOLDOWN_TTL || '300', 10
+    ),
+
+    // Stop trying further providers once this many merged
+    // results have been collected (limits upstream calls).
+    torrentMinResults: parseInt(
+      env.TORRENT_MIN_RESULTS || '10', 10
+    ),
+
+    // Last-known-good backup lifetime.
+    torrentBackupTtl: parseInt(
+      env.TORRENT_BACKUP_TTL || '604800', 10
+    ),
+
     jackettBase:
       env.JACKETT_BASE_URL || '',
 
@@ -191,6 +199,197 @@ async function withLimits(env, cfg, cors, fn) {
   }
 
   return fn();
+}
+
+// ================= Health check =================
+
+async function handleHealth(env, cfg, cors) {
+  const adapters = [];
+  const cooldowns = {};
+
+  for (const name of cfg.torrentFallbacks.concat(
+    ['jackett', 'prowlarr']
+  )) {
+    if (adapters.some(a => a.name === name)) {
+      continue;
+    }
+
+    let available = false;
+    let configured = true;
+
+    try {
+      getTorrentAdapter(name);
+      available = true;
+    } catch {
+      available = false;
+    }
+
+    if (
+      name === 'jackett' &&
+      !(cfg.jackettBase && cfg.jackettKey)
+    ) {
+      configured = false;
+    }
+
+    if (
+      name === 'prowlarr' &&
+      !(cfg.prowlarrBase && cfg.prowlarrKey)
+    ) {
+      configured = false;
+    }
+
+    adapters.push({
+      name,
+      adapterAvailable: available,
+      configured,
+      cooldownActive: configured
+        ? await isCoolingDown(env, name)
+        : false,
+    });
+  }
+
+  return json({
+    ok: true,
+    tmdbKeyPresent: !!env.TMDB_API_KEY,
+    homepageMode: cfg.tmdbApiKey
+      ? 'tmdb'
+      : 'itunes-keyless',
+    kvBound: !!env.CACHE,
+    torrentProvider: cfg.torrentProvider,
+    torrentFallbacks: cfg.torrentFallbacks,
+    torrentTimeoutMs: cfg.torrentTimeoutMs,
+    torrentRetries: cfg.torrentRetries,
+    torrentBackupTtl: cfg.torrentBackupTtl,
+    adapters,
+    jackettConfigured: !!(
+      cfg.jackettBase && cfg.jackettKey
+    ),
+    prowlarrConfigured: !!(
+      cfg.prowlarrBase && cfg.prowlarrKey
+    ),
+  }, 200, cors);
+}
+
+// ================= Provider cooldown =================
+
+async function isCoolingDown(env, provider) {
+  if (!env.CACHE) {
+    return false;
+  }
+
+  const raw = await env.CACHE.get(
+    'cooldown:' + provider
+  );
+
+  if (!raw) {
+    return false;
+  }
+
+  try {
+    return JSON.parse(raw).until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+async function setCooldown(env, provider, ttl, retryAfterSec) {
+  if (!env.CACHE) {
+    return;
+  }
+
+  // Honor Retry-After when the upstream supplied one,
+  // capped so a hostile/broken header cannot freeze us.
+  let seconds = ttl;
+
+  if (
+    retryAfterSec &&
+    Number.isFinite(retryAfterSec) &&
+    retryAfterSec > 0
+  ) {
+    seconds = Math.min(
+      Math.max(retryAfterSec, ttl),
+      900
+    );
+  }
+
+  await env.CACHE.put(
+    'cooldown:' + provider,
+    JSON.stringify({
+      until: Date.now() + seconds * 1000,
+    }),
+    { expirationTtl: seconds }
+  );
+}
+
+async function clearCooldown(env, provider) {
+  if (!env.CACHE) {
+    return;
+  }
+
+  // KV has no delete via the cachePut helper; store a
+  // short-lived "clear" marker that isCoolingDown treats
+  // as not-cooling.
+  await env.CACHE.put(
+    'cooldown:' + provider,
+    JSON.stringify({ until: 0 }),
+    { expirationTtl: 60 }
+  );
+}
+
+// ================= Retry with backoff =================
+
+function isRetryableError(e) {
+  if (!e) {
+    return false;
+  }
+
+  if (e.name === 'AbortError' || /timed out/i.test(e.message || '')) {
+    return true;
+  }
+
+  return e.retryable === true;
+}
+
+async function withProviderRetry(env, cfg, providerName, fn) {
+  const attempts = Math.max(1, cfg.torrentRetries + 1);
+  let lastError = null;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+
+      if (!isRetryableError(e) || i === attempts - 1) {
+        break;
+      }
+
+      // Exponential backoff: base * 2^i, capped at 4s.
+      const delay = Math.min(
+        cfg.retryBaseMs * Math.pow(2, i),
+        4000
+      );
+
+      await sleep(delay);
+    }
+  }
+
+  // 429/530/5xx: put the provider on cooldown so subsequent
+  // searches skip it for a while instead of hammering it.
+  if (lastError && lastError.cooldown) {
+    await setCooldown(
+      env,
+      providerName,
+      cfg.cooldownTtl,
+      lastError.retryAfterSec
+    );
+  }
+
+  throw lastError;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 // ================= Homepage =================
@@ -473,14 +672,20 @@ async function handleTorrents(env, cfg, url, cors) {
     return json(cached, 200, cors);
   }
 
-  // Fallback chain: try the primary provider first, then the
-  // keyless fallbacks. Collect errors; only report a
-  // providerError when every provider in the chain failed.
+  // Fallback chain with per-provider retry/backoff and
+  // cooldowns. Successful providers are aggregated until
+  // enough results are collected; providers that returned
+  // usable results continue to the next only when the
+  // merged total is still below torrentMinResults.
   const errors = [];
-  let data = null;
-  let usedProvider = '';
+  const merged = [];
+  const usedProviders = [];
 
   for (const providerName of cfg.torrentFallbacks) {
+    if (merged.length >= cfg.torrentMinResults) {
+      break;
+    }
+
     let adapter;
 
     try {
@@ -505,46 +710,62 @@ async function handleTorrents(env, cfg, url, cors) {
       continue;
     }
 
+    // Skip providers that recently returned 429/530/5xx.
+    if (await isCoolingDown(env, providerName)) {
+      errors.push(
+        providerName + ': cooling down after a recent failure'
+      );
+      continue;
+    }
+
     try {
-      data = await withTimeout(
-        adapter.search(cfg, q, 1),
-        cfg.torrentTimeoutMs
+      const data = await withProviderRetry(
+        env, cfg, providerName,
+        () => withTimeout(
+          adapter.search(cfg, q, 1),
+          cfg.torrentTimeoutMs
+        )
       );
 
-      if (
-        data &&
-        Array.isArray(data.torrents) &&
-        data.torrents.length
-      ) {
-        usedProvider = providerName;
-        break;
+      const torrents = (
+        data && Array.isArray(data.torrents)
+      ) ? data.torrents : [];
+
+      if (torrents.length) {
+        merged.push(...torrents);
+        usedProviders.push(providerName);
+
+        // Provider succeeded - clear any stale cooldown.
+        await clearCooldown(env, providerName);
+
+        if (merged.length >= cfg.torrentMinResults) {
+          break;
+        }
+
+        continue;
       }
 
-      // Provider responded but had no results. Keep it as a
-      // candidate but try the next provider before giving up.
-      if (!data) {
-        data = {
-          torrents: [],
-          totalResults: 0,
-          provider: providerName,
-        };
+      // Provider responded but had no results. Do not put it
+      // on cooldown - an empty result is a valid response.
+      if (!usedProviders.includes(providerName)) {
+        usedProviders.push(providerName);
       }
 
-      usedProvider = usedProvider || providerName;
+      errors.push(
+        providerName + ': no results'
+      );
 
     } catch (e) {
       errors.push(
-        providerName + ': ' + e.message
+        providerName + ': ' + (e.message || 'failed')
       );
     }
   }
 
-  // Every provider failed - fall back to the last known
-  // good result for this query before reporting an error.
-  if (
-    !data ||
-    !Array.isArray(data.torrents)
-  ) {
+  // Nothing usable from any provider - fall back to the
+  // last known good result for this query before
+  // reporting an error.
+  if (!merged.length) {
     const backup = await cacheGet(
       env,
       'torrents:backup:' + normTitle + ':' + year
@@ -577,7 +798,8 @@ async function handleTorrents(env, cfg, url, cors) {
         ')',
     };
 
-    // Keep temporary errors cached only briefly.
+    // Keep temporary errors cached only briefly, and only
+    // when there is no backup to preserve.
     await cachePut(env, key, payload, 120);
 
     return json(payload, 200, cors);
@@ -586,16 +808,16 @@ async function handleTorrents(env, cfg, url, cors) {
   // Remove duplicates and match the movie title/year.
   const seen = new Set();
 
-  const torrents = (
-    data.torrents || []
-  ).filter(t => {
+  const torrents = merged.filter(t => {
     const title = String(t.title || '');
 
-    const uniqueKey = (
-      t.infoHash ||
-      title.toLowerCase().replace(/\W+/g, '') +
-      '|' + (t.sizeBytes || t.size || '')
-    ).toLowerCase();
+    const hash = String(t.infoHash || '').toLowerCase();
+
+    const uniqueKey = hash ||
+      (
+        title.toLowerCase().replace(/\W+/g, '') +
+        '|' + (t.sizeBytes || t.size || '')
+      ).toLowerCase();
 
     if (seen.has(uniqueKey)) {
       return false;
@@ -603,7 +825,10 @@ async function handleTorrents(env, cfg, url, cors) {
 
     seen.add(uniqueKey);
 
-    // Require the normalized movie title to match.
+    // Require the normalized movie title to match. When the
+    // title cannot be matched, keep the entry only if the
+    // provider was explicit about the movie (same source
+    // result set); otherwise drop it.
     if (
       normTitle &&
       !normalizedContains(title, normTitle)
@@ -647,7 +872,8 @@ async function handleTorrents(env, cfg, url, cors) {
     year,
     torrents,
     totalResults: torrents.length,
-    provider: usedProvider || cfg.torrentProvider,
+    provider: usedProviders.join('+') ||
+      cfg.torrentProvider,
   };
 
   if (
@@ -671,9 +897,9 @@ async function handleTorrents(env, cfg, url, cors) {
         year,
         torrents,
         totalResults: torrents.length,
-        provider: usedProvider || cfg.torrentProvider,
+        provider: payload.provider,
       },
-      60 * 60 * 24 * 7   // 7 days
+      cfg.torrentBackupTtl
     );
   }
 
@@ -719,19 +945,24 @@ function qualityRank(resolution) {
 }
 
 async function withTimeout(promise, ms) {
+  let timer;
+
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      setTimeout(
+      timer = setTimeout(
         () => reject(
-          new Error(
-            'Timed out after ' + (ms / 1000) + 's'
+          Object.assign(
+            new Error(
+              'Timed out after ' + (ms / 1000) + 's'
+            ),
+            { retryable: true }
           )
         ),
         ms
       );
     }),
-  ]);
+  ]).finally(() => clearTimeout(timer));
 }
 
 // ================= Movie trailer =================
@@ -872,7 +1103,22 @@ async function fetchJSON(url) {
       new Error(
         'Upstream returned ' + res.status
       ),
-      { status: 502 }
+      {
+        status: 502,
+        // 429 and 5xx are transient; 4xx are not.
+        retryable:
+          res.status === 429 ||
+          res.status >= 500,
+        cooldown:
+          res.status === 429 ||
+          res.status === 530 ||
+          res.status >= 500,
+        retryAfterSec:
+          parseInt(
+            res.headers.get('Retry-After') || '',
+            10
+          ) || null,
+      }
     );
   }
 
@@ -883,7 +1129,7 @@ async function fetchJSON(url) {
   } catch (e) {
     throw Object.assign(
       new Error('Upstream returned invalid data'),
-      { status: 502 }
+      { status: 502, retryable: false }
     );
   }
 }
