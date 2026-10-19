@@ -6,23 +6,23 @@
  *   - iTunes
  *
  * Torrent providers:
- *   - YTS
- *   - Jackett
- *   - Prowlarr
- *   - TPB (apibay.org, keyless, magnet-only)
+ *   - YTS (mirror configurable via YTS_BASE_URL)
+ *   - TPB (apibay.org, keyless, magnet-only; TPB_BASE_URL)
  *   - torrents-csv (keyless, magnet-only)
+ *   - Jackett (requires JACKETT_BASE_URL + JACKETT_API_KEY)
+ *   - Prowlarr (requires PROWLARR_BASE_URL + PROWLARR_API_KEY)
  *
- * Required Worker bindings/secrets:
- *   TMDB_API_KEY
- *   JACKETT_BASE_URL
- *   JACKETT_API_KEY
- *   JACKETT_INDEXER
- *   PROWLARR_BASE_URL
- *   PROWLARR_API_KEY
+ * Every torrent adapter returns a consistent structure:
+ *   { torrents: [...], totalResults: n, provider: name }
+ * where each torrent has:
+ *   title, movieTitle, year, quality, resolution,
+ *   size, sizeBytes, seeds, peers, magnet, torrentUrl,
+ *   infoHash, source
  *
- * TORRENT_PROVIDER selects the primary torrent provider.
- * Keyless fallbacks (tpb, torrentscsv) are used automatically
- * by the worker when the primary provider fails.
+ * Provider failures are thrown as Errors carrying
+ * { status, retryable, cooldown, retryAfterSec } so the
+ * worker can retry/backoff/cooldown appropriately.
+ *
  * API keys must remain server-side.
  */
 
@@ -154,10 +154,15 @@ export const torrentAdapters = {
   // ----------------------------------------------------------
   // YTS
   // Keyless provider. Availability depends on the upstream API.
+  // A mirror can be configured via YTS_BASE_URL.
   // ----------------------------------------------------------
 
   yts: {
     async search(cfg, q, page = 1) {
+      const base = normalizeBase(
+        cfg.ytsBase || 'https://yts.mx'
+      );
+
       const params = new URLSearchParams({
         query_term: q,
         page: String(page),
@@ -166,41 +171,54 @@ export const torrentAdapters = {
       });
 
       const data = await fetchJSON(
-        'https://yts.mx/api/v2/list_movies.json?' +
+        base + '/api/v2/list_movies.json?' +
         params.toString()
       );
 
       if (
+        data &&
         data.status &&
         data.status !== 'ok'
       ) {
         throw new Error(
-          data.status_message ||
-          'YTS API returned an unsuccessful response'
+          'yts: ' + (
+            data.status_message ||
+            'YTS API returned an unsuccessful response'
+          )
         );
       }
 
       const movies =
-        data?.data?.movies || [];
+        (data &&
+          data.data &&
+          Array.isArray(data.data.movies)
+        ) ? data.data.movies : [];
 
       const torrents = [];
 
       for (const m of movies) {
+        if (!m || !m.title) continue;
+
         for (const t of (m.torrents || [])) {
-          if (!t.hash) continue;
+          if (!t || !t.hash) continue;
+
+          const hash =
+            String(t.hash).toLowerCase();
+
+          // Only accept verified info hashes.
+          const magnet = buildMagnet(
+            hash,
+            (m.title || 'Movie') +
+              ' ' + (t.quality || '')
+          );
+
+          if (!magnet) continue;
 
           const title = [
             m.title || '',
             m.year ? '(' + m.year + ')' : '',
             t.quality || '',
           ].filter(Boolean).join(' ');
-
-          const magnetParams = new URLSearchParams({
-            xt: 'urn:btih:' + t.hash,
-            dn: (m.title || 'Movie') +
-              ' ' + (t.quality || ''),
-            tr: 'udp://tracker.opentrackr.org:1337/announce',
-          });
 
           torrents.push({
             title,
@@ -211,16 +229,18 @@ export const torrentAdapters = {
             resolution: t.quality || '',
 
             size: t.size || '',
-            sizeBytes: 0,
+            sizeBytes: parseSize(t.size),
 
             seeds: Number(t.seeds) || 0,
             peers: Number(t.peers) || 0,
 
-            magnet:
-              'magnet:?' + magnetParams.toString(),
+            magnet,
 
-            torrentUrl: t.url || null,
-            infoHash: String(t.hash).toLowerCase(),
+            torrentUrl: isHttpUrl(t.url)
+              ? t.url
+              : null,
+
+            infoHash: hash,
             source: 'YTS',
           });
         }
@@ -240,12 +260,17 @@ export const torrentAdapters = {
   // Provides info hashes only - magnet links are built here
   // the same way thepiratebay.org builds them in browsers.
   // No .torrent file URLs are available from this source.
+  // Mirror configurable via TPB_BASE_URL.
   // ----------------------------------------------------------
 
   tpb: {
     async search(cfg, q, page = 1) {
+      const base = normalizeBase(
+        cfg.tpbBase || 'https://apibay.org'
+      );
+
       const url =
-        'https://apibay.org/q.php?' +
+        base + '/q.php?' +
         new URLSearchParams({
           q,
           cat: '207', // HD Movies category
@@ -255,28 +280,34 @@ export const torrentAdapters = {
 
       // apibay returns [{name:"no results"}] when empty.
       const list = Array.isArray(data)
-        ? data.filter(r => r && r.info_hash && r.name)
+        ? data.filter(r =>
+            r && r.info_hash &&
+            r.name &&
+            !/^no results/i.test(r.name)
+          )
         : [];
 
-      const torrents = list.map(r => {
+      const torrents = [];
+
+      for (const r of list) {
         const name = String(r.name || '');
+        const hash =
+          String(r.info_hash || '').toLowerCase();
+
+        // Only accept verified info hashes.
+        const magnet = buildMagnet(hash, name);
+
+        if (!magnet) continue;
+
         const resolution =
           (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
 
         const sizeBytes =
           Number(r.size) || 0;
 
-        return {
+        torrents.push({
           title: name,
-          movieTitle: name
-            .replace(/\[[^\]]*\]/g, ' ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(
-              /\.(mkv|mp4|avi|webm|x264|x265|h264|h265|hevc|bluray|webrip|web[- ]?dl|bdrip|dvdrip|hdrip|brrip|720p|1080p|2160p|480p|4k|yify|rarbg|ettv|eztv|aac|aac2|dts|ddp?5\.?1|5\.1|aac2\.0|hdtv|xvid|it|hindi|dual[\s-]*audio|esubs?|sub[\s-]*\w+|5\.1\s*hindi|[\s.-]+)+/gi,
-              ' '
-            )
-            .replace(/\s+/g, ' ')
-            .trim(),
+          movieTitle: cleanReleaseName(name),
 
           year: extractYear(name) || null,
 
@@ -292,15 +323,14 @@ export const torrentAdapters = {
           seeds: Number(r.seeders) || 0,
           peers: Number(r.leechers) || 0,
 
-          magnet: buildMagnet(r.info_hash, name),
+          magnet,
 
           torrentUrl: null,
-          infoHash:
-            String(r.info_hash).toLowerCase(),
+          infoHash: hash,
 
           source: 'ThePirateBay',
-        };
-      });
+        });
+      }
 
       return {
         torrents,
@@ -328,29 +358,34 @@ export const torrentAdapters = {
 
       const data = await fetchJSON(url);
 
-      const list = Array.isArray(data?.results)
-        ? data.results
-        : [];
+      const list = (
+        data &&
+        Array.isArray(data.results)
+      ) ? data.results : [];
 
-      const torrents = list.map(r => {
+      const torrents = [];
+
+      for (const r of list) {
+        if (!r || !r.name) continue;
+
         const name = String(r.name || '');
+        const hash =
+          String(r.infohash || '').toLowerCase();
+
+        // Only accept verified info hashes.
+        const magnet = buildMagnet(hash, name);
+
+        if (!magnet) continue;
+
         const resolution =
           (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
 
         const sizeBytes =
           Number(r.size_bytes) || 0;
 
-        return {
+        torrents.push({
           title: name,
-          movieTitle: name
-            .replace(/\[[^\]]*\]/g, ' ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(
-              /\.(mkv|mp4|avi|webm|x264|x265|h264|h265|hevc|bluray|webrip|web[- ]?dl|bdrip|dvdrip|hdrip|brrip|720p|1080p|2160p|480p|4k|yify|rarbg|ettv|eztv|aac|aac2|dts|ddp?5\.?1|5\.1|hdtv|xvid|[\s.-]+)+/gi,
-              ' '
-            )
-            .replace(/\s+/g, ' ')
-            .trim(),
+          movieTitle: cleanReleaseName(name),
 
           year: extractYear(name) || null,
 
@@ -366,15 +401,14 @@ export const torrentAdapters = {
           seeds: Number(r.seeders) || 0,
           peers: Number(r.leechers) || 0,
 
-          magnet: buildMagnet(r.infohash, name),
+          magnet,
 
           torrentUrl: null,
-          infoHash:
-            String(r.infohash || '').toLowerCase(),
+          infoHash: hash,
 
           source: 'torrents-csv',
-        };
-      });
+        });
+      }
 
       return {
         torrents,
@@ -392,24 +426,18 @@ export const torrentAdapters = {
   jackett: {
     async search(cfg, q, page = 1) {
       if (!cfg.jackettBase) {
-        throw Object.assign(
-          new Error(
-            'JACKETT_BASE_URL not configured'
-          ),
-          { status: 500 }
+        throw configError(
+          'jackett: JACKETT_BASE_URL not configured'
         );
       }
 
       if (!cfg.jackettKey) {
-        throw Object.assign(
-          new Error(
-            'JACKETT_API_KEY not configured'
-          ),
-          { status: 500 }
+        throw configError(
+          'jackett: JACKETT_API_KEY not configured'
         );
       }
 
-      const base = cfg.jackettBase.replace(/\/+$/, '');
+      const base = normalizeBase(cfg.jackettBase);
       const indexer = cfg.jackettIndexer || 'all';
 
       const params = new URLSearchParams({
@@ -480,7 +508,7 @@ export const torrentAdapters = {
         const link = tag('link') || '';
         const guid = tag('guid') || '';
 
-        const magnet =
+        let magnet =
           tag('magnetLink') ||
           (link.startsWith('magnet:?')
             ? link
@@ -497,8 +525,33 @@ export const torrentAdapters = {
           ? /btih:([a-z0-9]{40}|[a-z0-9]{32})/i.exec(magnet)
           : null;
 
+        const infoHash = hashMatch
+          ? hashMatch[1].toLowerCase()
+          : (
+              attr('infohash')
+                ? String(attr('infohash')).toLowerCase()
+                : null
+            );
+
+        // Build a verified magnet from the info hash when the
+        // indexer did not supply one.
+        if (
+          !magnet &&
+          infoHash
+        ) {
+          magnet = buildMagnet(infoHash, title);
+        }
+
+        // Skip entries with no usable link at all.
+        if (!magnet && !isHttpUrl(link) && !isHttpUrl(guid)) {
+          continue;
+        }
+
         torrents.push({
           title,
+          movieTitle: cleanReleaseName(title),
+
+          year: extractYear(title) || null,
 
           quality: resolution || '',
           resolution: resolution || '',
@@ -515,19 +568,15 @@ export const torrentAdapters = {
           magnet,
 
           torrentUrl:
-            link.startsWith('https://') ||
-            link.startsWith('http://')
+            isHttpUrl(link)
               ? link
               : (
-                  guid.startsWith('https://') ||
-                  guid.startsWith('http://')
+                  isHttpUrl(guid)
                     ? guid
                     : null
                 ),
 
-          infoHash: hashMatch
-            ? hashMatch[1].toLowerCase()
-            : null,
+          infoHash,
 
           source:
             attr('jackettindexer') ||
@@ -551,24 +600,18 @@ export const torrentAdapters = {
   prowlarr: {
     async search(cfg, q, page = 1) {
       if (!cfg.prowlarrBase) {
-        throw Object.assign(
-          new Error(
-            'PROWLARR_BASE_URL not configured'
-          ),
-          { status: 500 }
+        throw configError(
+          'prowlarr: PROWLARR_BASE_URL not configured'
         );
       }
 
       if (!cfg.prowlarrKey) {
-        throw Object.assign(
-          new Error(
-            'PROWLARR_API_KEY not configured'
-          ),
-          { status: 500 }
+        throw configError(
+          'prowlarr: PROWLARR_API_KEY not configured'
         );
       }
 
-      const base = cfg.prowlarrBase.replace(/\/+$/, '');
+      const base = normalizeBase(cfg.prowlarrBase);
 
       const params = new URLSearchParams({
         query: q,
@@ -585,7 +628,11 @@ export const torrentAdapters = {
         ? data
         : [];
 
-      const torrents = list.map(r => {
+      const torrents = [];
+
+      for (const r of list) {
+        if (!r || !r.title) continue;
+
         const title = r.title || '';
 
         const magnet =
@@ -597,11 +644,36 @@ export const torrentAdapters = {
           ? /btih:([a-z0-9]{40}|[a-z0-9]{32})/i.exec(magnet)
           : null;
 
-        const infoHash =
+        const infoHash = (
           r.infoHash ||
           (hashMatch
             ? hashMatch[1].toLowerCase()
-            : null);
+            : null)
+        ) || null;
+
+        // Build a verified magnet from the info hash when the
+        // indexer did not supply one.
+        let resolvedMagnet = magnet;
+
+        if (
+          !resolvedMagnet &&
+          infoHash
+        ) {
+          resolvedMagnet = buildMagnet(infoHash, title);
+        }
+
+        const downloadUrl = isHttpUrl(r.downloadUrl)
+          ? r.downloadUrl
+          : (
+              isHttpUrl(r.downloadURL)
+                ? r.downloadURL
+                : null
+            );
+
+        // Skip entries with no usable link at all.
+        if (!resolvedMagnet && !downloadUrl) {
+          continue;
+        }
 
         const sizeBytes =
           Number(r.size) || 0;
@@ -610,8 +682,11 @@ export const torrentAdapters = {
           (/(2160p|1080p|720p|480p)/i.exec(title) || [])[0] ||
           '';
 
-        return {
+        torrents.push({
           title,
+          movieTitle: cleanReleaseName(title),
+
+          year: extractYear(title) || null,
 
           quality: resolution,
           resolution,
@@ -625,12 +700,9 @@ export const torrentAdapters = {
           seeds: Number(r.seeders) || 0,
           peers: Number(r.leechers) || 0,
 
-          magnet,
+          magnet: resolvedMagnet,
 
-          torrentUrl:
-            r.downloadUrl ||
-            r.downloadURL ||
-            null,
+          torrentUrl: downloadUrl,
 
           infoHash,
 
@@ -638,8 +710,8 @@ export const torrentAdapters = {
             r.indexer ||
             r.indexerName ||
             'Prowlarr',
-        };
-      });
+        });
+      }
 
       return {
         torrents,
@@ -697,7 +769,7 @@ const TRACKERS = [
 ];
 
 export function buildMagnet(infoHash, displayName) {
-  const hash = String(infoHash || '').toLowerCase();
+  const hash = String(infoHash || '').toLowerCase().trim();
 
   if (!/^[a-f0-9]{40}$/.test(hash) && !/^[a-f0-9]{32}$/.test(hash)) {
     return null;
@@ -724,6 +796,75 @@ function extractYear(value) {
     : 0;
 }
 
+// Strip common release-name noise to produce a clean
+// movie title for matching and display.
+function cleanReleaseName(name) {
+  return String(name || '')
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(
+      /\.(mkv|mp4|avi|webm|x264|x265|h264|h265|hevc|bluray|webrip|web[- ]?dl|bdrip|dvdrip|hdrip|brrip|720p|1080p|2160p|480p|4k|yify|rarbg|ettv|eztv|aac|aac2|dts|ddp?5\.?1|5\.1|aac2\.0|hdtv|xvid|it|hindi|dual[\s-]*audio|esubs?|sub[\s-]*\w+|[\s.-]+)+/gi,
+      ' '
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Best-effort size parser for human-readable strings
+// such as "1.4 GB" (YTS returns sizes this way).
+function parseSize(value) {
+  const s = String(value || '').trim();
+
+  if (!s) return 0;
+
+  const m = /^([\d.]+)\s*(b|kb|mb|gb|tb)$/i.exec(s);
+
+  if (!m) return 0;
+
+  const n = parseFloat(m[1]);
+
+  if (!Number.isFinite(n)) return 0;
+
+  const unit = m[2].toLowerCase();
+
+  const mult = {
+    b: 1,
+    kb: 1024,
+    mb: 1024 ** 2,
+    gb: 1024 ** 3,
+    tb: 1024 ** 4,
+  }[unit];
+
+  return Math.round(n * mult);
+}
+
+function isHttpUrl(value) {
+  return (
+    typeof value === 'string' &&
+    (
+      value.startsWith('https://') ||
+      value.startsWith('http://')
+    )
+  );
+}
+
+function normalizeBase(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
+function configError(message) {
+  return Object.assign(
+    new Error(message),
+    {
+      status: 500,
+      retryable: false,
+      cooldown: false,
+    }
+  );
+}
+
 // ============================================================
 // HTTP HELPERS
 // ============================================================
@@ -736,21 +877,27 @@ async function fetchJSON(url) {
     },
   });
 
-  if (response.status === 403) {
-    throw Object.assign(
-      new Error(
-        'Provider refused this server-side request (HTTP 403).'
-      ),
-      { status: 502 }
-    );
-  }
-
   if (!response.ok) {
     throw Object.assign(
       new Error(
         'Upstream returned ' + response.status
       ),
-      { status: 502 }
+      {
+        status: 502,
+        // 429 and 5xx are transient; 4xx are not.
+        retryable:
+          response.status === 429 ||
+          response.status >= 500,
+        cooldown:
+          response.status === 429 ||
+          response.status === 530 ||
+          response.status >= 500,
+        retryAfterSec:
+          parseInt(
+            response.headers.get('Retry-After') || '',
+            10
+          ) || null,
+      }
     );
   }
 
@@ -761,7 +908,7 @@ async function fetchJSON(url) {
   } catch {
     throw Object.assign(
       new Error('Upstream returned invalid JSON'),
-      { status: 502 }
+      { status: 502, retryable: false }
     );
   }
 }
@@ -779,7 +926,20 @@ async function fetchText(url) {
       new Error(
         'Upstream returned ' + response.status
       ),
-      { status: 502 }
+      {
+        status: 502,
+        retryable:
+          response.status === 429 ||
+          response.status >= 500,
+        cooldown:
+          response.status === 429 ||
+          response.status >= 500,
+        retryAfterSec:
+          parseInt(
+            response.headers.get('Retry-After') || '',
+            10
+          ) || null,
+      }
     );
   }
 
