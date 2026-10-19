@@ -1,3 +1,4 @@
+
 import {
   getMetadataAdapter,
   getTorrentAdapter,
@@ -63,7 +64,7 @@ function readConfig(env) {
     torrentTimeoutMs: positiveInt(env.TORRENT_TIMEOUT_MS, 12000),
     torrentRetries: nonNegativeInt(env.TORRENT_RETRIES, 2),
     retryBaseMs: positiveInt(env.RETRY_BASE_MS, 600),
-    cooldownTtl: positiveInt(env.PROVIDER_COOLDOWN_TTL, 300),
+    cooldownTtl: positiveInt(env.PROVIDER_COOLDOWN_TTL, 10),
     torrentMinResults: positiveInt(env.TORRENT_MIN_RESULTS, 10),
     // 90 days. Override with TORRENT_BACKUP_TTL (seconds) if desired.
     torrentBackupTtl: positiveInt(env.TORRENT_BACKUP_TTL, 7776000),
@@ -309,7 +310,6 @@ async function handleTorrents(env, cfg, url, cors) {
 
   const backupKey = 'torrents:backup:' + normTitle + ':' + year;
 
-  // If every provider failed or returned nothing, prefer the last good backup.
   if (!merged.length) {
     const backup = await getBackup(env, backupKey);
     if (backup) {
@@ -325,7 +325,6 @@ async function handleTorrents(env, cfg, url, cors) {
       providerError: 'Torrent index temporarily unavailable (' +
         (errors.join(' | ') || 'no response') + ')',
     };
-    // Do not let an empty/error response replace a good backup.
     await cachePut(env, key, empty, 120);
     return json(empty, 200, cors);
   }
@@ -353,8 +352,6 @@ async function handleTorrents(env, cfg, url, cors) {
     ((b.seeds || 0) - (a.seeds || 0))
   );
 
-  // Critical backup fix: filtering can remove all fresh results.
-  // In that case, return the previous last-known-good backup.
   if (!torrents.length) {
     const backup = await getBackup(env, backupKey);
     if (backup) {
@@ -373,7 +370,6 @@ async function handleTorrents(env, cfg, url, cors) {
     payload.providerError = 'Torrent index temporarily unavailable (' + errors.join(' | ') + ')';
   }
 
-  // Only save non-empty, validated results. Keep the prior backup intact otherwise.
   if (torrents.length) {
     const backupPayload = {
       query: q, year, torrents, totalResults: torrents.length,
@@ -382,7 +378,6 @@ async function handleTorrents(env, cfg, url, cors) {
     await cachePut(env, backupKey, backupPayload, cfg.torrentBackupTtl);
   }
 
-  // Do not store a fresh empty result over an existing cache entry for long.
   await cachePut(env, key, payload, payload.providerError ? 120 : cfg.torrentTtl);
   return json(payload, 200, cors);
 }
