@@ -8,8 +8,8 @@
  * Torrent providers:
  *   - YTS (mirror configurable via YTS_BASE_URL)
  *   - TPB (apibay.org, keyless, magnet-only; TPB_BASE_URL)
+ *   - Knaben (keyless aggregator: 1337x, TGx, TPB, YTS and more; rarely down)
  *   - torrents-csv (keyless, magnet-only)
- *   - Knaben (keyless aggregator: 1337x, TGx, TPB and more; rarely down)
  *   - Jackett (requires JACKETT_BASE_URL + JACKETT_API_KEY)
  *   - Prowlarr (requires PROWLARR_BASE_URL + PROWLARR_API_KEY)
  *
@@ -128,6 +128,56 @@ export const torrentAdapters = {
       return { torrents, totalResults: torrents.length, provider: 'tpb' };
     },
   },
+  knaben: {
+    // NEW: keyless aggregator (1337x, TGx, TPB, YTS and more in one API).
+    // Endpoint: POST https://api.knaben.org/v1 — response array is "hits".
+    async search(cfg, q, page = 1) {
+      const res = await fetch('https://api.knaben.org/v1', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CineXZone/1.0',
+        },
+        body: JSON.stringify({
+          query: q,
+          search_field: 'title',
+          size: 50,
+          categories: [2000], // Movies
+        }),
+      });
+      if (!res.ok) {
+        throw Object.assign(new Error('Upstream returned ' + res.status), {
+          status: 502,
+          retryable: res.status === 429 || res.status >= 500,
+          cooldown: res.status === 429 || res.status === 530 || res.status >= 500,
+          retryAfterSec: parseInt(res.headers.get('Retry-After') || '', 10) || null,
+        });
+      }
+      const data = await res.json();
+      const list = data && Array.isArray(data.hits) ? data.hits : [];
+      const torrents = [];
+      for (const r of list) {
+        const name = String(r.title || '').trim();
+        if (!name) continue;
+        const hash = String(r.infoHash || '').toLowerCase();
+        let magnet = (r.magnetUrl && !isHttpUrl(r.magnetUrl)) ? r.magnetUrl : null;
+        if (!magnet) magnet = buildMagnet(hash, name);
+        if (!magnet) continue;
+        const resolution = (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
+        const sizeBytes = Number(r.bytes) || 0;
+        torrents.push({
+          title: name, movieTitle: cleanReleaseName(name), year: extractYear(name) || null,
+          quality: resolution, resolution, size: sizeBytes ? humanSize(sizeBytes) : '',
+          sizeBytes, seeds: Number(r.seeders) || 0, peers: Number(r.leechers) || 0,
+          magnet, torrentUrl: isHttpUrl(r.downloadUrl) ? r.downloadUrl : null,
+          infoHash: hash || (magnet.match(/btih:([a-z0-9]{40}|[a-z0-9]{32})/i) || [])[1] || '',
+          source: r.tracker || 'Knaben',
+        });
+      }
+      return { torrents, totalResults: torrents.length, provider: 'knaben' };
+    },
+  },
   torrentscsv: {
     async search(cfg, q, page = 1) {
       const url = 'https://torrents-csv.com/service/search?' + new URLSearchParams({ q, size: '100' }).toString();
@@ -150,56 +200,6 @@ export const torrentAdapters = {
         });
       }
       return { torrents, totalResults: torrents.length, provider: 'torrentscsv' };
-    },
-  },
-  knaben: {
-    // NEW: keyless aggregator (1337x, TGx, TPB and more in one API).
-    // Rarely goes down, so it is a strong fallback for yts/tpb outages.
-    async search(cfg, q, page = 1) {
-      const res = await fetch('https://api.knaben.org/v1/knaben/search/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': 'CineXZone/1.0',
-        },
-        body: JSON.stringify({
-          query: q,
-          category: [2000], // Movies
-          limit: 100,
-          offset: (page - 1) * 100,
-        }),
-      });
-      if (!res.ok) {
-        throw Object.assign(new Error('Upstream returned ' + res.status), {
-          status: 502,
-          retryable: res.status === 429 || res.status >= 500,
-          cooldown: res.status === 429 || res.status === 530 || res.status >= 500,
-          retryAfterSec: parseInt(res.headers.get('Retry-After') || '', 10) || null,
-        });
-      }
-      const data = await res.json();
-      const list = data && Array.isArray(data.torrents) ? data.torrents : [];
-      const torrents = [];
-      for (const r of list) {
-        const name = String(r.title || '').trim();
-        if (!name) continue;
-        const hash = String(r.infoHash || '').toLowerCase();
-        let magnet = (r.magnetUrl && !isHttpUrl(r.magnetUrl)) ? r.magnetUrl : null;
-        if (!magnet) magnet = buildMagnet(hash, name);
-        if (!magnet) continue;
-        const resolution = (/(2160p|1080p|720p|480p)/i.exec(name) || [])[0] || '';
-        const sizeBytes = Number(r.size) || 0;
-        torrents.push({
-          title: name, movieTitle: cleanReleaseName(name), year: extractYear(name) || null,
-          quality: resolution, resolution, size: sizeBytes ? humanSize(sizeBytes) : '',
-          sizeBytes, seeds: Number(r.seeders) || 0, peers: Number(r.leechers) || 0,
-          magnet, torrentUrl: isHttpUrl(r.downloadUrl) ? r.downloadUrl : null,
-          infoHash: hash || (magnet.match(/btih:([a-z0-9]{40}|[a-z0-9]{32})/i) || [])[1] || '',
-          source: r.indexer || 'Knaben',
-        });
-      }
-      return { torrents, totalResults: torrents.length, provider: 'knaben' };
     },
   },
   jackett: {
