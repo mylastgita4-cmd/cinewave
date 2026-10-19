@@ -539,11 +539,32 @@ async function handleTorrents(env, cfg, url, cors) {
     }
   }
 
-  // Every provider failed - report a graceful error.
+  // Every provider failed - fall back to the last known
+  // good result for this query before reporting an error.
   if (
     !data ||
     !Array.isArray(data.torrents)
   ) {
+    const backup = await cacheGet(
+      env,
+      'torrents:backup:' + normTitle + ':' + year
+    );
+
+    if (
+      backup &&
+      Array.isArray(backup.torrents) &&
+      backup.torrents.length
+    ) {
+      return json({
+        ...backup,
+        stale: true,
+        providerError:
+          'Torrent index temporarily unavailable (' +
+          (errors.join(' | ') || 'no response') +
+          ') - showing cached results',
+      }, 200, cors);
+    }
+
     const payload = {
       query: q,
       year,
@@ -637,6 +658,23 @@ async function handleTorrents(env, cfg, url, cors) {
       'Torrent index temporarily unavailable (' +
       errors.join(' | ') +
       ')';
+  }
+
+  // Save a long-lived backup so transient upstream failures
+  // (530/429/timeouts) can still serve the last good results.
+  if (torrents.length) {
+    await cachePut(
+      env,
+      'torrents:backup:' + normTitle + ':' + year,
+      {
+        query: q,
+        year,
+        torrents,
+        totalResults: torrents.length,
+        provider: usedProvider || cfg.torrentProvider,
+      },
+      60 * 60 * 24 * 7   // 7 days
+    );
   }
 
   await cachePut(
