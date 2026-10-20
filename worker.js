@@ -39,16 +39,6 @@ export default {
           handleTrailer(env, cfg, url, cors));
       }
 
-      if (url.pathname === '/api/archive') {
-        return await withLimits(env, cfg, cors, () =>
-          handleArchiveSearch(env, cfg, url, cors));
-      }
-
-      if (url.pathname === '/api/archive/details') {
-        return await withLimits(env, cfg, cors, () =>
-          handleArchiveDetails(env, cfg, url, cors));
-      }
-
       if (url.pathname === '/api/health') {
         return await handleHealth(env, cfg, cors);
       }
@@ -143,6 +133,9 @@ function readConfig(env) {
     prowlarrBase: env.PROWLARR_BASE_URL || '',
     prowlarrKey: env.PROWLARR_API_KEY || '',
     ytsBase: env.YTS_BASE_URL || '',
+    // Comma-separated list, e.g. "https://yts.mx,https://yts.bz"
+    ytsMirrors: String(env.YTS_MIRRORS || '')
+      .split(',').map(s => s.trim()).filter(Boolean),
     tpbBase: env.TPB_BASE_URL || '',
   };
 }
@@ -242,11 +235,6 @@ async function handleHealth(env, cfg, cors) {
     adapters,
     jackettConfigured: !!(cfg.jackettBase && cfg.jackettKey),
     prowlarrConfigured: !!(cfg.prowlarrBase && cfg.prowlarrKey),
-    internetArchive: {
-      enabled: true,
-      searchEndpoint: '/api/archive?q=movie&page=1',
-      detailsEndpoint: '/api/archive/details?id=IDENTIFIER',
-    },
   }, 200, cors);
 }
 
@@ -489,249 +477,6 @@ async function handleMovies(env, cfg, url, cors) {
     results: (payload.results || []).slice(start, start + perPage),
     source: payload.source,
   }, 200, cors);
-}
-
-// ---------------- INTERNET ARCHIVE ----------------
-
-// Improved movie-title search.
-// Search results do not prove that a film is public domain or reusable.
-async function handleArchiveSearch(env, cfg, url, cors) {
-  const q = (url.searchParams.get('q') || '').trim();
-  const page = Math.max(
-    1,
-    parseInt(url.searchParams.get('page') || '1', 10) || 1
-  );
-
-  if (!q) {
-    return json({
-      error: 'Missing search query. Use ?q=movie name',
-    }, 400, cors);
-  }
-
-  if (q.length > 100) {
-    return json({ error: 'Query too long' }, 400, cors);
-  }
-
-  const safeQuery = q
-    .replace(/[+\-&|!(){}[\]^"~*?:\\/]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!safeQuery) {
-    return json({ error: 'Invalid search query' }, 400, cors);
-  }
-
-  const cacheKey =
-    'archive:search:v3:' + q.toLowerCase() + ':' + page;
-
-  const cached = await cacheGet(env, cacheKey);
-
-  if (cached) {
-    return json({ ...cached, cached: true }, 200, cors);
-  }
-
-  const searchUrl = new URL(
-    'https://archive.org/advancedsearch.php'
-  );
-
-  // Search title fields instead of descriptions to reduce unrelated results.
-  searchUrl.searchParams.set(
-    'q',
-    'mediatype:movies AND title:(' + safeQuery + ')'
-  );
-
-  [
-    'identifier',
-    'title',
-    'year',
-    'description',
-    'mediatype',
-    'licenseurl'
-  ].forEach(field => {
-    searchUrl.searchParams.append('fl[]', field);
-  });
-
-  // Fetch a larger batch, then filter and return up to 20 results.
-  const rows = 100;
-  const start = (page - 1) * rows;
-
-  searchUrl.searchParams.set('rows', String(rows));
-  searchUrl.searchParams.set('start', String(start));
-  searchUrl.searchParams.set('output', 'json');
-  searchUrl.searchParams.set('sort[]', 'downloads desc');
-
-  let data;
-
-  try {
-    data = await fetchJSON(searchUrl.toString());
-  } catch (e) {
-    console.error('Internet Archive search failed:', e.message);
-
-    return json({
-      error: 'Internet Archive search is temporarily unavailable.',
-      details: e.message || 'Upstream error',
-    }, 502, cors);
-  }
-
-  const response = data?.response || {};
-  const docs = Array.isArray(response.docs)
-    ? response.docs
-    : [];
-
-  const excludedPatterns = [
-    /\bgameplay\b/i,
-    /\blongplay\b/i,
-    /\bwalkthrough\b/i,
-    /\bspeedrun\b/i,
-    /\bvideo game\b/i,
-    /\bgame review\b/i,
-    /\bgame trailer\b/i,
-    /\bfull episode\b/i,
-    /\btv episode\b/i,
-    /\btv series\b/i,
-    /\bseason\s*\d+\b/i,
-    /\bepisode\s*\d+\b/i,
-    /\bmovie trailer\b/i,
-    /\bfilm trailer\b/i,
-    /\bbehind the scenes\b/i,
-    /\bmaking of\b/i,
-    /\binterview\b/i,
-    /\bpodcast\b/i
-  ];
-
-  const results = docs
-    .map(item => {
-      const identifier = String(item.identifier || '').trim();
-
-      if (!identifier) return null;
-
-      const title = String(item.title || identifier).trim();
-
-      return {
-        id: identifier,
-        identifier,
-        title,
-        year: item.year || '',
-        overview: item.description || '',
-        source: 'Internet Archive',
-        mediatype: item.mediatype || 'movies',
-        licenseUrl: item.licenseurl || null,
-        detailsUrl:
-          'https://archive.org/details/' +
-          encodeURIComponent(identifier),
-        apiDetailsUrl:
-          '/api/archive/details?id=' +
-          encodeURIComponent(identifier),
-        rightsNote:
-          'Check the item details and licence before reusing.',
-      };
-    })
-    .filter(Boolean)
-    .filter(item =>
-      !excludedPatterns.some(pattern => pattern.test(item.title))
-    )
-    .slice(0, 20);
-
-  const totalResults = Number(response.numFound || 0);
-
-  const payload = {
-    query: q,
-    page,
-    perPage: 20,
-    totalResults,
-    totalPages: Math.max(1, Math.ceil(totalResults / 20)),
-    source: 'Internet Archive',
-    results,
-    notice:
-      'Search results do not guarantee public-domain status or permission to redistribute. Verify each item’s rights before reuse.',
-  };
-
-  await cachePut(env, cacheKey, payload, cfg.cacheTtl);
-
-  return json(payload, 200, cors);
-}
-
-async function handleArchiveDetails(env, cfg, url, cors) {
-  const id = (url.searchParams.get('id') || '').trim();
-
-  if (!id || id.length > 200 || !/^[a-zA-Z0-9._-]+$/.test(id)) {
-    return json({
-      error: 'Invalid identifier',
-      example: '/api/archive/details?id=identifier',
-    }, 400, cors);
-  }
-
-  const cacheKey = 'archive:details:' + id;
-  const cached = await cacheGet(env, cacheKey);
-
-  if (cached) {
-    return json({ ...cached, cached: true }, 200, cors);
-  }
-
-  const metadataUrl =
-    'https://archive.org/metadata/' + encodeURIComponent(id);
-
-  const data = await fetchJSON(metadataUrl);
-  const metadata = data.metadata || {};
-  const files = Array.isArray(data.files) ? data.files : [];
-
-  const videoExtensions = /\.(mp4|m4v|webm|ogv|ogg|mov|avi|mpeg|mpg)$/i;
-
-  const videoFiles = files
-    .filter(file => {
-      const name = String(file.name || '');
-      const format = String(file.format || '').toLowerCase();
-
-      return videoExtensions.test(name) ||
-        /mpeg4|h\.264|ogg video|webm|quicktime/i.test(format);
-    })
-    .filter(file => {
-      const name = String(file.name || '');
-      return !name.startsWith('__ia_thumb') &&
-        !/\.thumbs\//i.test(name);
-    })
-    .slice(0, 30)
-    .map(file => {
-      const filename = String(file.name || '');
-      const encodedFilename = filename.split('/')
-        .map(part => encodeURIComponent(part))
-        .join('/');
-
-      return {
-        name: filename,
-        format: file.format || '',
-        size: file.size || null,
-        source: 'Internet Archive',
-        streamUrl: 'https://archive.org/download/' +
-          encodeURIComponent(id) + '/' + encodedFilename,
-        downloadUrl: 'https://archive.org/download/' +
-          encodeURIComponent(id) + '/' + encodedFilename,
-      };
-    });
-
-  const payload = {
-    id,
-    identifier: id,
-    title: metadata.title || id,
-    description: metadata.description || '',
-    year: metadata.year || metadata.date || '',
-    creator: metadata.creator || '',
-    mediatype: metadata.mediatype || '',
-    licenseUrl: metadata.licenseurl || metadata.license_url || null,
-    rights: metadata.rights || '',
-    collection: metadata.collection || [],
-    detailsUrl: 'https://archive.org/details/' +
-      encodeURIComponent(id),
-    metadataUrl,
-    source: 'Internet Archive',
-    videoFiles,
-    playable: videoFiles.length > 0,
-    rightsNotice:
-      'Rights information may be incomplete or inaccurate. Verify the item licence and permissions before downloading, reusing, or redistributing.',
-  };
-
-  await cachePut(env, cacheKey, payload, cfg.cacheTtl);
-  return json(payload, 200, cors);
 }
 
 // ---------------- TORRENT SEARCH ----------------
