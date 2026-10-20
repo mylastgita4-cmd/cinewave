@@ -1,4 +1,3 @@
-
 import {
   getMetadataAdapter,
   getTorrentAdapter,
@@ -7,12 +6,7 @@ import {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-
-    const cors = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
+    const cors = buildCors(env, request);
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: cors });
@@ -75,6 +69,40 @@ export default {
   },
 };
 
+// ---------------- CORS ----------------
+
+// ALLOWED_ORIGINS = "" (empty)  -> allow any origin ("*")
+// ALLOWED_ORIGINS = "https://a.com,https://b.com" -> only those origins
+function buildCors(env, request) {
+  const base = {
+    'Access-Control-Allow-Methods': 'GET,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
+  const allowed = String(env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (!allowed.length) {
+    return { ...base, 'Access-Control-Allow-Origin': '*' };
+  }
+
+  const origin = request.headers.get('Origin') || '';
+
+  if (allowed.includes(origin)) {
+    return {
+      ...base,
+      'Access-Control-Allow-Origin': origin,
+      Vary: 'Origin',
+    };
+  }
+
+  return { ...base, Vary: 'Origin' };
+}
+
+// ---------------- CONFIG ----------------
+
 function readConfig(env) {
   const primaryProvider = env.TORRENT_PROVIDER || 'yts';
 
@@ -89,8 +117,15 @@ function readConfig(env) {
     rlMax: positiveInt(env.RATE_LIMIT_MAX, 60),
     rlWindow: positiveInt(env.RATE_LIMIT_WINDOW, 60),
     torrentProvider: primaryProvider,
+    // Providers that are not configured (jackett/prowlarr without
+    // URL + key) are skipped automatically in handleTorrents.
     torrentFallbacks: [...new Set([
-      primaryProvider, 'tpb', 'knaben', 'torrentscsv'
+      primaryProvider,
+      'prowlarr',
+      'jackett',
+      'tpb',
+      'knaben',
+      'torrentscsv',
     ])],
     torrentTimeoutMs: positiveInt(env.TORRENT_TIMEOUT_MS, 12000),
     torrentRetries: nonNegativeInt(env.TORRENT_RETRIES, 2),
@@ -128,6 +163,8 @@ function nonNegativeInt(value, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+// ---------------- RATE LIMIT ----------------
+
 async function withLimits(env, cfg, cors, fn) {
   if (env.CACHE) {
     const bucket = Math.floor(Date.now() / 1000 / cfg.rlWindow);
@@ -152,6 +189,8 @@ async function withLimits(env, cfg, cors, fn) {
 
   return fn();
 }
+
+// ---------------- HEALTH ----------------
 
 async function handleHealth(env, cfg, cors) {
   const names = [...new Set(
@@ -210,6 +249,8 @@ async function handleHealth(env, cfg, cors) {
     },
   }, 200, cors);
 }
+
+// ---------------- COOLDOWN / RETRY ----------------
 
 async function isCoolingDown(env, provider) {
   if (!env.CACHE) return false;
@@ -722,6 +763,7 @@ async function handleTorrents(env, cfg, url, cors) {
       continue;
     }
 
+    // Skip providers that are not configured (no error noise).
     if (providerName === 'jackett' &&
         !(cfg.jackettBase && cfg.jackettKey)) continue;
 
@@ -1027,7 +1069,9 @@ async function fetchJSON(url) {
   const res = await fetch(url, {
     headers: {
       Accept: 'application/json',
-      'User-Agent': 'CineXZone/1.0',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+        '(KHTML, like Gecko) Chrome/124.0 Safari/537.36',
     },
   });
 
