@@ -21,7 +21,7 @@ export default {
     try {
       if (url.pathname === '/api/home' || url.pathname === '/api/latest') {
         return await withLimits(env, cfg, cors, () =>
-          handleHome(env, cfg, cors));
+          handleHome(env, cfg, url, cors));
       }
 
       if (url.pathname === '/api/movies') {
@@ -132,6 +132,10 @@ function readConfig(env) {
     jackettIndexer: env.JACKETT_INDEXER || 'all',
     prowlarrBase: env.PROWLARR_BASE_URL || '',
     prowlarrKey: env.PROWLARR_API_KEY || '',
+    // Home list: how many pages (30 titles each) can be browsed, and the
+    // minimum TMDB vote count a title needs (filters out junk entries).
+    homeMaxPages: positiveInt(env.HOME_MAX_PAGES, 10),
+    homeMinVotes: nonNegativeInt(env.HOME_MIN_VOTES, 5),
     ytsBase: env.YTS_BASE_URL || '',
     // Comma-separated list, e.g. "https://yts.mx,https://yts.bz"
     ytsMirrors: String(env.YTS_MIRRORS || '')
@@ -325,125 +329,254 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ---------------- CONTENT TYPE (all / movie / tv) ----------------
+
+const HOME_PAGE_SIZE = 30;   // titles shown per page on the home list
+const TMDB_PAGE_SIZE = 20;   // TMDB always returns 20 per page
+
+function parseType(value) {
+  const t = String(value || '').toLowerCase();
+  return t === 'movie' || t === 'tv' ? t : 'all';
+}
+
+function byDateDesc(a, b) {
+  return String(b.releaseDate || '').localeCompare(String(a.releaseDate || ''));
+}
+
+function range(from, to) {
+  const out = [];
+  for (let i = from; i <= to; i++) out.push(i);
+  return out;
+}
+
+function mapTmdbItem(m, cfg, kind) {
+  const isTv = kind === 'tv';
+  const date = (isTv ? m.first_air_date : m.release_date) || '';
+
+  return {
+    id: String(m.id),
+    type: kind,
+    title: (isTv ? m.name : m.title) || '',
+    year: date.slice(0, 4),
+    releaseDate: date,
+    overview: m.overview || '',
+    poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
+    rating: m.vote_average ?? null,
+    genres: [],
+    genreIds: m.genre_ids || [],
+    trailerUrl: null,
+    storeUrl: null,
+    source: 'TMDB',
+  };
+}
+
 // ---------------- HOME / LATEST ----------------
+// GET /api/home?type=all|movie|tv&page=1
+// Newest releases first, 30 titles per page.
 
-async function handleHome(env, cfg, cors) {
-  if (cfg.tmdbApiKey) {
-    const [latest, popular] = await Promise.all([
-      tmdbSection(env, cfg, 'now_playing', cfg.homeTtl),
-      tmdbSection(env, cfg, 'popular', cfg.homeTtl),
-    ]);
+async function handleHome(env, cfg, url, cors) {
+  const type = parseType(url.searchParams.get('type'));
+  const page = Math.min(
+    cfg.homeMaxPages,
+    Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1)
+  );
 
-    return json({
-      mode: 'tmdb',
-      latest: latest.movies,
-      latestSource: latest.source,
-      popular: popular.movies,
-      popularSource: popular.source,
-    }, 200, cors);
-  }
+  const result = cfg.tmdbApiKey
+    ? await tmdbHome(env, cfg, type, page)
+    : await itunesHome(env, cfg, type, page);
 
-  const key = 'home:itunes';
-  let cached = await cacheGet(env, key);
-
-  if (!cached) {
-    try {
-      const data = await fetchJSON(
-        'https://itunes.apple.com/us/rss/topmovies/limit=50/json'
-      );
-
-      const entries = (((data || {}).feed || {}).entry || []);
-
-      const movies = (Array.isArray(entries) ? entries : [entries])
-        .map(e => ({
-          id: e.id && e.id.attributes
-            ? e.id.attributes['im:id']
-            : (e.id && e.id.label) || '',
-          title: e['im:name'] ? e['im:name'].label : '',
-          year: e['im:releaseDate']
-            ? (e['im:releaseDate'].label || '').slice(0, 4)
-            : '',
-          releaseDate: e['im:releaseDate']
-            ? e['im:releaseDate'].label
-            : '',
-          overview: e.summary ? e.summary.label : '',
-          poster: e['im:image']
-            ? e['im:image'][e['im:image'].length - 1].label
-            : null,
-          rating: null,
-          genres: e.category
-            ? [e.category.attributes?.label || '']
-            : [],
-          genreIds: [],
-          trailerUrl: null,
-          storeUrl: null,
-          source: 'iTunes',
-        }))
-        .filter(m => m.title);
-
-      cached = { movies, source: 'itunes-keyless' };
-      await cachePut(env, key, cached, cfg.homeTtl);
-    } catch (e) {
-      cached = {
-        movies: [],
-        source: 'itunes-keyless',
-        error: e.message,
-      };
-    }
-  }
+  const totalPages = Math.max(1, Math.min(
+    cfg.homeMaxPages,
+    Math.ceil((result.totalResults || 0) / HOME_PAGE_SIZE)
+  ));
 
   return json({
-    mode: 'itunes-keyless',
-    latest: cached.movies || [],
-    latestSource: cached.source || 'itunes-keyless',
-    popular: [],
-    popularSource: '',
-    notice: cached.error
-      ? 'Movie data temporarily unavailable: ' + cached.error
-      : 'The homepage is using the Apple movie feed.',
+    mode: cfg.tmdbApiKey ? 'tmdb' : 'itunes-keyless',
+    type,
+    page,
+    perPage: HOME_PAGE_SIZE,
+    totalPages,
+    totalResults: result.totalResults || 0,
+    items: result.items,
+    source: result.source,
+    notice: result.notice || '',
   }, 200, cors);
 }
 
-async function tmdbSection(env, cfg, section, ttl) {
-  const key = 'home:tmdb:' + section;
+async function tmdbDiscoverPage(env, cfg, kind, tmdbPage) {
+  const key = 'home:v2:tmdb:' + kind + ':' + cfg.homeMinVotes + ':' + tmdbPage;
   const cached = await cacheGet(env, key);
+  if (cached) return cached;
 
-  if (cached) return { movies: cached, source: 'tmdb (cache)' };
+  const isTv = kind === 'tv';
+  const today = new Date().toISOString().slice(0, 10);
 
-  try {
-    const data = await fetchJSON(
-      'https://api.themoviedb.org/3/movie/' + section +
-      '?api_key=' + encodeURIComponent(cfg.tmdbApiKey) +
-      '&language=en-US&page=1'
-    );
+  const params = new URLSearchParams({
+    api_key: cfg.tmdbApiKey,
+    language: 'en-US',
+    page: String(tmdbPage),
+    include_adult: 'false',
+    sort_by: isTv ? 'first_air_date.desc' : 'primary_release_date.desc',
+    'vote_count.gte': String(cfg.homeMinVotes),
+  });
+  params.set(isTv ? 'first_air_date.lte' : 'primary_release_date.lte', today);
 
-    const movies = (data.results || []).map(m => ({
-      id: String(m.id),
-      title: m.title,
-      year: (m.release_date || '').slice(0, 4),
-      releaseDate: m.release_date || '',
-      overview: m.overview || '',
-      poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
-      rating: m.vote_average,
-      genres: [],
-      genreIds: m.genre_ids || [],
-      trailerUrl: null,
-      storeUrl: null,
-      source: 'TMDB',
-    }));
+  const data = await fetchJSON(
+    'https://api.themoviedb.org/3/discover/' + kind + '?' + params.toString()
+  );
 
-    if (movies.length) await cachePut(env, key, movies, ttl);
+  const out = {
+    items: (data.results || []).map(m => mapTmdbItem(m, cfg, kind)),
+    totalResults: Math.min(data.total_results || 0, 10000),
+  };
 
-    return { movies, source: 'tmdb' };
-  } catch (e) {
-    return { movies: [], source: 'tmdb (' + e.message + ')' };
-  }
+  if (out.items.length) await cachePut(env, key, out, cfg.homeTtl);
+  return out;
 }
 
-// ---------------- MOVIE SEARCH ----------------
+async function tmdbHome(env, cfg, type, page) {
+  const errors = [];
+
+  const safe = async (kind, p) => {
+    try {
+      return await tmdbDiscoverPage(env, cfg, kind, p);
+    } catch (e) {
+      errors.push(kind + ': ' + (e.message || 'failed'));
+      return { items: [], totalResults: 0 };
+    }
+  };
+
+  let items = [];
+  let totalResults = 0;
+
+  if (type !== 'all') {
+    const start = (page - 1) * HOME_PAGE_SIZE;
+    const end = start + HOME_PAGE_SIZE;
+    const first = Math.floor(start / TMDB_PAGE_SIZE) + 1;
+    const last = Math.floor((end - 1) / TMDB_PAGE_SIZE) + 1;
+
+    const pages = await Promise.all(range(first, last).map(p => safe(type, p)));
+    const offset = start - (first - 1) * TMDB_PAGE_SIZE;
+
+    items = pages.flatMap(p => p.items).slice(offset, offset + HOME_PAGE_SIZE);
+    totalResults = Math.max(0, ...pages.map(p => p.totalResults));
+  } else {
+    // Merge two newest-first lists. The top (30 * page) of the merged list is
+    // always inside the top (30 * page) of each source, so fetch that much.
+    const lastTmdbPage = Math.ceil((page * HOME_PAGE_SIZE) / TMDB_PAGE_SIZE);
+    const nums = range(1, lastTmdbPage);
+
+    const [moviePages, tvPages] = await Promise.all([
+      Promise.all(nums.map(p => safe('movie', p))),
+      Promise.all(nums.map(p => safe('tv', p))),
+    ]);
+
+    const merged = [
+      ...moviePages.flatMap(p => p.items),
+      ...tvPages.flatMap(p => p.items),
+    ].sort(byDateDesc);
+
+    items = merged.slice((page - 1) * HOME_PAGE_SIZE, page * HOME_PAGE_SIZE);
+    totalResults =
+      Math.max(0, ...moviePages.map(p => p.totalResults)) +
+      Math.max(0, ...tvPages.map(p => p.totalResults));
+  }
+
+  return {
+    items,
+    totalResults,
+    source: 'tmdb',
+    notice: !items.length && errors.length
+      ? 'Movie data temporarily unavailable: ' + errors[0]
+      : '',
+  };
+}
+
+// Keyless fallback (no TMDB key): Apple's top charts, newest first.
+async function itunesHome(env, cfg, type, page) {
+  const kinds = type === 'all' ? ['movie', 'tv'] : [type];
+  const errors = [];
+
+  const lists = await Promise.all(kinds.map(async kind => {
+    const key = 'home:v2:itunes:' + kind;
+    let cached = await cacheGet(env, key);
+    if (cached) return cached;
+
+    try {
+      const feed = kind === 'tv' ? 'toptvseasons' : 'topmovies';
+      const data = await fetchJSON(
+        'https://itunes.apple.com/us/rss/' + feed + '/limit=50/json'
+      );
+
+      const entries = (((data || {}).feed || {}).entry || []);
+      const seen = new Set();
+
+      const items = (Array.isArray(entries) ? entries : [entries])
+        .map(e => {
+          const rawName = e['im:name'] ? e['im:name'].label : '';
+          const title = kind === 'tv'
+            ? rawName.replace(/\s*[,\-–:]?\s*(Season|Series)\s*\d+.*$/i, '').trim()
+            : rawName;
+          const releaseDate = e['im:releaseDate']
+            ? (e['im:releaseDate'].label || '')
+            : '';
+
+          return {
+            id: e.id && e.id.attributes
+              ? e.id.attributes['im:id']
+              : (e.id && e.id.label) || '',
+            type: kind,
+            title,
+            year: releaseDate.slice(0, 4),
+            releaseDate,
+            overview: e.summary ? e.summary.label : '',
+            poster: e['im:image']
+              ? e['im:image'][e['im:image'].length - 1].label
+              : null,
+            rating: null,
+            genres: e.category
+              ? [e.category.attributes?.label || '']
+              : [],
+            genreIds: [],
+            trailerUrl: null,
+            storeUrl: null,
+            source: 'iTunes',
+          };
+        })
+        .filter(m => {
+          if (!m.title || seen.has(m.title.toLowerCase())) return false;
+          seen.add(m.title.toLowerCase());
+          return true;
+        });
+
+      cached = { items };
+      if (items.length) await cachePut(env, key, cached, cfg.homeTtl);
+      return cached;
+    } catch (e) {
+      errors.push(kind + ': ' + (e.message || 'failed'));
+      return { items: [] };
+    }
+  }));
+
+  const all = lists.flatMap(l => l.items).sort(byDateDesc);
+  const start = (page - 1) * HOME_PAGE_SIZE;
+
+  return {
+    items: all.slice(start, start + HOME_PAGE_SIZE),
+    totalResults: all.length,
+    source: 'itunes-keyless',
+    notice: !all.length && errors.length
+      ? 'Movie data temporarily unavailable: ' + errors[0]
+      : '',
+  };
+}
+
+// ---------------- SEARCH (movies / tv / all) ----------------
+// GET /api/movies?q=...&page=1&type=all|movie|tv
 
 async function handleMovies(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
+  const type = parseType(url.searchParams.get('type'));
   const page = Math.max(
     1, parseInt(url.searchParams.get('page') || '1', 10) || 1
   );
@@ -454,13 +587,13 @@ async function handleMovies(env, cfg, url, cors) {
   const provider = cfg.tmdbApiKey ? 'tmdb' : 'itunes';
   const adapter = getMetadataAdapter(provider);
 
-  const key = 'movies:' + provider + ':' + q.toLowerCase() +
+  const key = 'movies:v2:' + provider + ':' + type + ':' + q.toLowerCase() +
     (provider === 'tmdb' ? ':' + page : '');
 
   let payload = await cacheGet(env, key);
 
   if (!payload) {
-    payload = await adapter.search(cfg, q, page);
+    payload = await adapter.search(cfg, q, page, type);
     await cachePut(env, key, payload, cfg.cacheTtl);
   }
 
@@ -483,13 +616,17 @@ async function handleMovies(env, cfg, url, cors) {
 
 async function handleTorrents(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
-  const year = parseInt(url.searchParams.get('year') || '0', 10) || 0;
+  const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+  const year = type === 'tv'
+    ? 0
+    : (parseInt(url.searchParams.get('year') || '0', 10) || 0);
+  const kp = type === 'tv' ? 'tv:' : '';
 
   if (!q) return json({ error: 'Missing query' }, 400, cors);
   if (q.length > 200) return json({ error: 'Query too long' }, 400, cors);
 
   const normTitle = normalizeTitle(q);
-  const key = 'torrents:multi:' + normTitle + ':' + year;
+  const key = 'torrents:multi:' + kp + normTitle + ':' + year;
   const cached = await cacheGet(env, key);
 
   if (cached) return json(cached, 200, cors);
@@ -509,6 +646,9 @@ async function handleTorrents(env, cfg, url, cors) {
     }
 
     // Skip providers that are not configured (no error noise).
+    // YTS only carries movies.
+    if (type === 'tv' && providerName === 'yts') continue;
+
     if (providerName === 'jackett' &&
         !(cfg.jackettBase && cfg.jackettKey)) continue;
 
@@ -523,7 +663,7 @@ async function handleTorrents(env, cfg, url, cors) {
     try {
       const data = await withProviderRetry(env, cfg, providerName, () =>
         withTimeout(
-          adapter.search(cfg, q, 1),
+          adapter.search(cfg, q, 1, { type }),
           cfg.torrentTimeoutMs
         )
       );
@@ -552,7 +692,7 @@ async function handleTorrents(env, cfg, url, cors) {
     }
   }
 
-  const backupKey = 'torrents:backup:' + normTitle + ':' + year;
+  const backupKey = 'torrents:backup:' + kp + normTitle + ':' + year;
 
   if (!merged.length) {
     const backup = await getBackup(env, backupKey);
@@ -714,7 +854,8 @@ async function handleTrailer(env, cfg, url, cors) {
     return json({ trailerUrl: null }, 200, cors);
   }
 
-  const key = 'trailer:' + id;
+  const kind = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+  const key = 'trailer:' + (kind === 'tv' ? 'tv:' : '') + id;
   const cached = await cacheGet(env, key);
 
   if (cached) return json(cached, 200, cors);
@@ -723,7 +864,7 @@ async function handleTrailer(env, cfg, url, cors) {
 
   try {
     const data = await fetchJSON(
-      'https://api.themoviedb.org/3/movie/' + id +
+      'https://api.themoviedb.org/3/' + kind + '/' + id +
       '/videos?api_key=' + encodeURIComponent(cfg.tmdbApiKey) +
       '&language=en-US'
     );
