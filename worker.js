@@ -39,6 +39,17 @@ export default {
           handleTrailer(env, cfg, url, cors));
       }
 
+      // NEW: TV seasons list + episodes of one season
+      if (url.pathname === '/api/tv-seasons') {
+        return await withLimits(env, cfg, cors, () =>
+          handleTvSeasons(env, cfg, url, cors));
+      }
+
+      if (url.pathname === '/api/tv-season') {
+        return await withLimits(env, cfg, cors, () =>
+          handleTvSeason(env, cfg, url, cors));
+      }
+
       if (url.pathname === '/api/health') {
         return await handleHealth(env, cfg, cors);
       }
@@ -612,6 +623,59 @@ async function handleMovies(env, cfg, url, cors) {
   }, 200, cors);
 }
 
+// ---------------- TV: SEASONS & EPISODES (NEW) ----------------
+// GET /api/tv-seasons?id=<tmdbId>
+// GET /api/tv-season?id=<tmdbId>&season=<number>
+// Both need TMDB_API_KEY (iTunes ids cannot be used for episode lists).
+
+async function handleTvSeasons(env, cfg, url, cors) {
+  if (!cfg.tmdbApiKey) {
+    return json({ error: 'Season lists need TMDB_API_KEY' }, 400, cors);
+  }
+
+  const id = (url.searchParams.get('id') || '').trim();
+  if (!/^\d+$/.test(id)) return json({ error: 'Invalid id' }, 400, cors);
+
+  const key = 'tv:seasons:v1:' + id;
+  let payload = await cacheGet(env, key);
+
+  if (!payload) {
+    payload = await getMetadataAdapter('tmdb').seasons(cfg, id);
+    if (payload.seasons && payload.seasons.length) {
+      await cachePut(env, key, payload, cfg.cacheTtl);
+    }
+  }
+
+  return json(payload, 200, cors);
+}
+
+async function handleTvSeason(env, cfg, url, cors) {
+  if (!cfg.tmdbApiKey) {
+    return json({ error: 'Episode lists need TMDB_API_KEY' }, 400, cors);
+  }
+
+  const id = (url.searchParams.get('id') || '').trim();
+  const season = (url.searchParams.get('season') || '').trim();
+
+  if (!/^\d+$/.test(id)) return json({ error: 'Invalid id' }, 400, cors);
+  if (!/^\d{1,3}$/.test(season)) {
+    return json({ error: 'Invalid season' }, 400, cors);
+  }
+
+  const key = 'tv:season:v1:' + id + ':' + season;
+  let payload = await cacheGet(env, key);
+
+  if (!payload) {
+    payload = await getMetadataAdapter('tmdb').season(cfg, id, season);
+    // Short cache: air dates / new episodes change often.
+    if (payload.episodes && payload.episodes.length) {
+      await cachePut(env, key, payload, Math.min(cfg.cacheTtl, 1800));
+    }
+  }
+
+  return json(payload, 200, cors);
+}
+
 // ---------------- TORRENT SEARCH ----------------
 
 async function handleTorrents(env, cfg, url, cors) {
@@ -626,6 +690,14 @@ async function handleTorrents(env, cfg, url, cors) {
   if (q.length > 200) return json({ error: 'Query too long' }, 400, cors);
 
   const normTitle = normalizeTitle(q);
+
+  // TV: the query looks like "Show Name S01" or "Show Name S01E03".
+  // Torrent names often put the year between title and season
+  // ("Show.Name.2020.S01E03"), so match only on the show name part.
+  const matchTitle = type === 'tv'
+    ? (normalizeTitle(q.replace(/\bS\d{1,2}(?:\s*E\d{1,3})?\s*$/i, '')) || normTitle)
+    : normTitle;
+
   const key = 'torrents:multi:' + kp + normTitle + ':' + year;
   const cached = await cacheGet(env, key);
 
@@ -736,7 +808,7 @@ async function handleTorrents(env, cfg, url, cors) {
     if (seen.has(uniqueKey)) return false;
     seen.add(uniqueKey);
 
-    if (normTitle && !normalizedContains(title, normTitle)) return false;
+    if (matchTitle && !normalizedContains(title, matchTitle)) return false;
 
     if (year) {
       const releaseYear = extractYear(title);
