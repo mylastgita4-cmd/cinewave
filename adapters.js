@@ -60,29 +60,46 @@ const TRACKERS = [
 
 export const metadataAdapters = {
   tmdb: {
-    async search(cfg, q, page = 1) {
+    // type: 'all' (movies + TV), 'movie' or 'tv'
+    async search(cfg, q, page = 1, type = 'all') {
       if (!cfg.tmdbApiKey) {
         throw Object.assign(new Error('TMDB_API_KEY not set'), { status: 500 });
       }
+
+      const endpoint = type === 'movie' ? 'search/movie'
+        : type === 'tv' ? 'search/tv'
+        : 'search/multi';
+
       const params = new URLSearchParams({
         api_key: cfg.tmdbApiKey,
         query: q,
         page: String(page),
         language: 'en-US',
+        include_adult: 'false',
       });
+
       const data = await fetchJSON(
-        'https://api.themoviedb.org/3/search/movie?' + params.toString()
+        'https://api.themoviedb.org/3/' + endpoint + '?' + params.toString()
       );
-      return {
-        page: data.page || page,
-        perPage: 20,
-        totalPages: data.total_pages || 1,
-        totalResults: data.total_results || 0,
-        results: (data.results || []).map(m => ({
+
+      const results = [];
+
+      for (const m of (data.results || [])) {
+        const kind = type === 'all' ? m.media_type : type;
+        if (kind !== 'movie' && kind !== 'tv') continue; // skips people
+
+        const isTv = kind === 'tv';
+        const title = (isTv ? m.name : m.title) || '';
+        if (!title) continue;
+
+        const date = (isTv ? m.first_air_date : m.release_date) || '';
+
+        results.push({
           id: String(m.id),
-          title: m.title || '',
-          year: (m.release_date || '').slice(0, 4),
-          releaseDate: m.release_date || '',
+          type: kind,
+          title,
+          year: date.slice(0, 4),
+          releaseDate: date,
           overview: m.overview || '',
           poster: m.poster_path ? cfg.imageBase + m.poster_path : null,
           rating: m.vote_average ?? null,
@@ -91,43 +108,29 @@ export const metadataAdapters = {
           trailerUrl: null,
           storeUrl: null,
           source: 'TMDB',
-        })),
+        });
+      }
+
+      return {
+        page: data.page || page,
+        perPage: 20,
+        totalPages: data.total_pages || 1,
+        totalResults: data.total_results || 0,
+        results,
         source: 'tmdb',
       };
     },
   },
 
   itunes: {
-    async search(cfg, q, page = 1) {
-      const params = new URLSearchParams({
-        term: q,
-        media: 'movie',
-        entity: 'movie',
-        limit: '200',
-        country: 'US',
-      });
-      const data = await fetchJSON(
-        'https://itunes.apple.com/search?' + params.toString()
+    async search(cfg, q, page = 1, type = 'all') {
+      const kinds = type === 'all' ? ['movie', 'tv'] : [type];
+      const lists = await Promise.all(kinds.map(k => itunesSearchKind(q, k)));
+
+      const results = lists.flat().sort((a, b) =>
+        String(b.releaseDate || '').localeCompare(String(a.releaseDate || ''))
       );
-      const results = (data.results || [])
-        .map(m => ({
-          id: m.trackId != null ? String(m.trackId) : (m.trackName || ''),
-          title: m.trackName || '',
-          year: (m.releaseDate || '').slice(0, 4),
-          releaseDate: m.releaseDate || '',
-          overview: m.longDescription || m.shortDescription || '',
-          genres: m.primaryGenreName ? [m.primaryGenreName] : [],
-          genreIds: [],
-          poster: m.artworkUrl100
-            ? m.artworkUrl100.replace('/100x100bb.jpg', '/600x600bb.jpg')
-            : null,
-          rating: null,
-          trailerUrl: m.previewUrl || null,
-          storeUrl: m.trackViewUrl || null,
-          artist: m.artistName || null,
-          source: 'iTunes',
-        }))
-        .filter(m => m.title);
+
       return {
         page,
         perPage: 20,
@@ -139,6 +142,55 @@ export const metadataAdapters = {
     },
   },
 };
+
+async function itunesSearchKind(q, kind) {
+  const isTv = kind === 'tv';
+
+  const params = new URLSearchParams({
+    term: q,
+    media: isTv ? 'tvShow' : 'movie',
+    entity: isTv ? 'tvSeason' : 'movie',
+    limit: '200',
+    country: 'US',
+  });
+
+  const data = await fetchJSON('https://itunes.apple.com/search?' + params.toString());
+  const seen = new Set();
+  const out = [];
+
+  for (const m of (data.results || [])) {
+    const title = isTv ? (m.artistName || '') : (m.trackName || '');
+    if (!title) continue;
+
+    // One entry per show (iTunes lists every season separately)
+    if (isTv) {
+      const k = title.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+    }
+
+    const art = m.artworkUrl100 || '';
+
+    out.push({
+      id: String(isTv ? (m.collectionId || m.trackId || title) : (m.trackId != null ? m.trackId : title)),
+      type: kind,
+      title,
+      year: (m.releaseDate || '').slice(0, 4),
+      releaseDate: m.releaseDate || '',
+      overview: m.longDescription || m.shortDescription || '',
+      genres: m.primaryGenreName ? [m.primaryGenreName] : [],
+      genreIds: [],
+      poster: art ? art.replace(/\/100x100bb\.(jpg|png)$/, '/600x600bb.$1') : null,
+      rating: null,
+      trailerUrl: m.previewUrl || null,
+      storeUrl: m.trackViewUrl || m.collectionViewUrl || null,
+      artist: m.artistName || null,
+      source: 'iTunes',
+    });
+  }
+
+  return out;
+}
 
 // ============================================================
 // TORRENT ADAPTERS
@@ -416,7 +468,7 @@ export const torrentAdapters = {
 
   // ---------------- Jackett ----------------
   jackett: {
-    async search(cfg, q, page = 1) {
+    async search(cfg, q, page = 1, opts = {}) {
       if (!cfg.jackettBase) throw configError('jackett: JACKETT_BASE_URL not configured');
       if (!cfg.jackettKey) throw configError('jackett: JACKETT_API_KEY not configured');
 
@@ -425,7 +477,7 @@ export const torrentAdapters = {
 
       const params = new URLSearchParams({
         apikey: cfg.jackettKey,
-        t: 'movie',
+        t: opts.type === 'tv' ? 'tvsearch' : 'movie',
         q,
         limit: '50',
         offset: String((page - 1) * 50),
@@ -515,7 +567,7 @@ export const torrentAdapters = {
 
   // ---------------- Prowlarr ----------------
   prowlarr: {
-    async search(cfg, q, page = 1) {
+    async search(cfg, q, page = 1, opts = {}) {
       if (!cfg.prowlarrBase) throw configError('prowlarr: PROWLARR_BASE_URL not configured');
       if (!cfg.prowlarrKey) throw configError('prowlarr: PROWLARR_API_KEY not configured');
 
@@ -525,6 +577,7 @@ export const torrentAdapters = {
         type: 'search',
         apikey: cfg.prowlarrKey,
       });
+      if (opts.type === 'tv') params.set('categories', '5000');
 
       // Self-hosted (e.g. home PC): if it is offline, fail fast, do not
       // retry, and let the worker put it on cooldown so searches stay quick.
