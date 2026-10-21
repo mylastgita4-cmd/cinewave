@@ -39,6 +39,16 @@ export default {
           handleTrailer(env, cfg, url, cors));
       }
 
+      if (url.pathname === '/api/tv/seasons') {
+        return await withLimits(env, cfg, cors, () =>
+          handleTvSeasons(env, cfg, url, cors));
+      }
+
+      if (url.pathname === '/api/tv/season') {
+        return await withLimits(env, cfg, cors, () =>
+          handleTvEpisodes(env, cfg, url, cors));
+      }
+
       if (url.pathname === '/api/health') {
         return await handleHealth(env, cfg, cors);
       }
@@ -612,6 +622,170 @@ async function handleMovies(env, cfg, url, cors) {
   }, 200, cors);
 }
 
+// ---------------- TV SEASONS / EPISODES ----------------
+// GET /api/tv/seasons?id=TMDB_ID           -> aired seasons, oldest first
+// GET /api/tv/season?id=TMDB_ID&season=1   -> aired episodes, in order
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function handleTvSeasons(env, cfg, url, cors) {
+  if (!cfg.tmdbApiKey) {
+    return json({ error: 'Season details need a TMDB API key' }, 501, cors);
+  }
+
+  const id = (url.searchParams.get('id') || '').trim();
+  if (!/^\d+$/.test(id)) return json({ error: 'Invalid id' }, 400, cors);
+
+  const key = 'tv:seasons:' + id;
+  let payload = await cacheGet(env, key);
+
+  if (!payload) {
+    const data = await fetchJSON(
+      'https://api.themoviedb.org/3/tv/' + id +
+      '?api_key=' + encodeURIComponent(cfg.tmdbApiKey) + '&language=en-US'
+    );
+
+    const today = todayISO();
+    const next = data.next_episode_to_air || null;
+
+    const seasons = (data.seasons || [])
+      .filter(s => s.season_number > 0 && s.air_date && s.air_date <= today)
+      .map(s => {
+        // The running season lists unaired episodes too; count only aired ones.
+        const aired = next && next.season_number === s.season_number
+          ? Math.max(0, (next.episode_number || 1) - 1)
+          : (s.episode_count || 0);
+
+        return {
+          season: s.season_number,
+          name: s.name || 'Season ' + s.season_number,
+          episodes: aired,
+          airDate: s.air_date,
+          year: String(s.air_date).slice(0, 4),
+        };
+      })
+      .filter(s => s.episodes > 0)
+      .sort((a, b) => a.season - b.season);
+
+    payload = {
+      id,
+      name: data.name || '',
+      status: data.status || '',
+      seasons,
+    };
+
+    if (seasons.length) await cachePut(env, key, payload, cfg.homeTtl);
+  }
+
+  return json(payload, 200, cors);
+}
+
+async function handleTvEpisodes(env, cfg, url, cors) {
+  if (!cfg.tmdbApiKey) {
+    return json({ error: 'Season details need a TMDB API key' }, 501, cors);
+  }
+
+  const id = (url.searchParams.get('id') || '').trim();
+  const season = parseInt(url.searchParams.get('season') || '', 10);
+
+  if (!/^\d+$/.test(id) || !Number.isFinite(season) || season < 1 || season > 99) {
+    return json({ error: 'Invalid id or season' }, 400, cors);
+  }
+
+  const key = 'tv:episodes:' + id + ':' + season;
+  let payload = await cacheGet(env, key);
+
+  if (!payload) {
+    const data = await fetchJSON(
+      'https://api.themoviedb.org/3/tv/' + id + '/season/' + season +
+      '?api_key=' + encodeURIComponent(cfg.tmdbApiKey) + '&language=en-US'
+    );
+
+    const today = todayISO();
+
+    const episodes = (data.episodes || [])
+      .filter(e => e.air_date && e.air_date <= today)
+      .map(e => ({
+        episode: e.episode_number,
+        name: e.name || 'Episode ' + e.episode_number,
+        airDate: e.air_date,
+        runtime: e.runtime || null,
+      }))
+      .sort((a, b) => a.episode - b.episode);
+
+    payload = { id, season, name: data.name || '', episodes };
+
+    if (episodes.length) await cachePut(env, key, payload, cfg.homeTtl);
+  }
+
+  return json(payload, 200, cors);
+}
+
+// ---- release-name parsing: "Show.Name.S01E03.1080p" -> season 1, episode 3 ----
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function parseEpisodeInfo(title) {
+  const t = String(title || '');
+
+  // Multi-season packs ("S01-S05", "Seasons 1-5", "Complete Series")
+  if (/\bS\d{1,2}\s*[-–~]\s*S?\d{1,2}\b/i.test(t) ||
+      /\bseasons?\s*\d{1,2}\s*(?:-|–|~|to)\s*\d{1,2}\b/i.test(t) ||
+      /\bcomplete\s+(?:series|collection)\b/i.test(t)) {
+    return { season: null, episode: null, episodeEnd: null, multi: true };
+  }
+
+  // S01E03, S01E03E04, S01E03-E04
+  let m = /\bS(\d{1,2})[ ._-]?E(\d{1,3})(?:[ ._-]?(?:E|-E?)(\d{1,3}))?/i.exec(t);
+  if (m) {
+    return {
+      season: parseInt(m[1], 10),
+      episode: parseInt(m[2], 10),
+      episodeEnd: m[3] ? parseInt(m[3], 10) : null,
+      multi: false,
+    };
+  }
+
+  // 1x03
+  m = /\b(\d{1,2})x(\d{2,3})\b/i.exec(t);
+  if (m) {
+    return {
+      season: parseInt(m[1], 10),
+      episode: parseInt(m[2], 10),
+      episodeEnd: null,
+      multi: false,
+    };
+  }
+
+  // Season pack: "S01" or "Season 1"
+  m = /\bS(\d{1,2})\b/i.exec(t) || /\bSeason[ ._-]?(\d{1,2})\b/i.exec(t);
+  if (m) {
+    return { season: parseInt(m[1], 10), episode: null, episodeEnd: null, multi: false };
+  }
+
+  return { season: null, episode: null, episodeEnd: null, multi: false };
+}
+
+// season only  -> packs + every episode of that season
+// season+episode -> that episode only (double episodes count for both)
+function seasonEpisodeMatch(title, season, episode) {
+  const info = parseEpisodeInfo(title);
+
+  if (info.multi || info.season !== season) return false;
+  if (!episode) return true;
+  if (info.episode == null) return false;
+
+  if (info.episodeEnd && info.episodeEnd >= info.episode) {
+    return episode >= info.episode && episode <= info.episodeEnd;
+  }
+
+  return info.episode === episode;
+}
+
 // ---------------- TORRENT SEARCH ----------------
 
 async function handleTorrents(env, cfg, url, cors) {
@@ -620,7 +794,23 @@ async function handleTorrents(env, cfg, url, cors) {
   const year = type === 'tv'
     ? 0
     : (parseInt(url.searchParams.get('year') || '0', 10) || 0);
-  const kp = type === 'tv' ? 'tv:' : '';
+  const season = type === 'tv'
+    ? Math.min(99, Math.max(0, parseInt(url.searchParams.get('season') || '0', 10) || 0))
+    : 0;
+  const episode = season
+    ? Math.min(999, Math.max(0, parseInt(url.searchParams.get('episode') || '0', 10) || 0))
+    : 0;
+  const kp = type === 'tv'
+    ? 'tv:' + (season ? 's' + season + (episode ? 'e' + episode : '') + ':' : '')
+    : '';
+
+  // "Show Name S01E03" for one episode, "Show Name S01" for season packs
+  const searchQuery = season
+    ? q + ' S' + pad2(season) + (episode ? 'E' + pad2(episode) : '')
+    : q;
+
+  // How many matching results are enough before we stop asking more providers
+  const needed = episode ? 4 : (season ? 6 : cfg.torrentMinResults);
 
   if (!q) return json({ error: 'Missing query' }, 400, cors);
   if (q.length > 200) return json({ error: 'Query too long' }, 400, cors);
@@ -635,8 +825,12 @@ async function handleTorrents(env, cfg, url, cors) {
   const merged = [];
   const usedProviders = [];
 
+  const countWanted = () => season
+    ? merged.filter(t => seasonEpisodeMatch(t.title, season, episode)).length
+    : merged.length;
+
   for (const providerName of cfg.torrentFallbacks) {
-    if (merged.length >= cfg.torrentMinResults) break;
+    if (countWanted() >= needed) break;
 
     let adapter;
     try {
@@ -663,7 +857,7 @@ async function handleTorrents(env, cfg, url, cors) {
     try {
       const data = await withProviderRetry(env, cfg, providerName, () =>
         withTimeout(
-          adapter.search(cfg, q, 1, { type }),
+          adapter.search(cfg, searchQuery, 1, { type }),
           cfg.torrentTimeoutMs
         )
       );
@@ -678,7 +872,7 @@ async function handleTorrents(env, cfg, url, cors) {
 
         await clearCooldown(env, providerName);
 
-        if (merged.length >= cfg.torrentMinResults) break;
+        if (countWanted() >= needed) break;
         continue;
       }
 
@@ -738,6 +932,8 @@ async function handleTorrents(env, cfg, url, cors) {
 
     if (normTitle && !normalizedContains(title, normTitle)) return false;
 
+    if (season && !seasonEpisodeMatch(title, season, episode)) return false;
+
     if (year) {
       const releaseYear = extractYear(title);
       if (releaseYear && Math.abs(releaseYear - year) > 1) return false;
@@ -752,6 +948,16 @@ async function handleTorrents(env, cfg, url, cors) {
     qualityRank(b.resolution) - qualityRank(a.resolution) ||
     ((b.seeds || 0) - (a.seeds || 0))
   );
+
+  // Tell the page which season / episode each release is
+  if (type === 'tv') {
+    for (const t of torrents) {
+      const info = parseEpisodeInfo(t.title);
+      t.season = info.season;
+      t.episode = info.episode;
+      t.episodeEnd = info.episodeEnd;
+    }
+  }
 
   if (!torrents.length) {
     const backup = await getBackup(env, backupKey);
@@ -769,6 +975,8 @@ async function handleTorrents(env, cfg, url, cors) {
   const payload = {
     query: q,
     year,
+    season,
+    episode,
     torrents,
     totalResults: torrents.length,
     provider: usedProviders.join('+') || cfg.torrentProvider,
@@ -804,6 +1012,7 @@ async function handleTorrents(env, cfg, url, cors) {
 
 function normalizeTitle(value) {
   return String(value || '').toLowerCase()
+    .replace(/['’]/g, '')
     .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
