@@ -4,7 +4,13 @@
 *{box-sizing:border-box}:root{--gold:#f3c766;--white:#fff5d8;--bg:#090d16;--panel:#141c2b;--muted:#aab4c5;--line:#273248}body{margin:0;background:var(--bg);color:#fff;font-family:Arial,Helvetica,sans-serif}body.lock{overflow:hidden}header{padding:20px 15px;background:linear-gradient(130deg,#111827,#171a23 65%,#292113);border-bottom:1px solid #6b5528;overflow:hidden}.brand,.intro-brand{font-weight:1000;white-space:nowrap;text-align:center;color:transparent;background-image:linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00e5ff,#2979ff,#d500f9,#ff1744);background-size:300% 100%;background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:rainbowFlow 5s linear infinite;filter:drop-shadow(0 0 10px #a855f755)}.brand{font-size:clamp(35px,8vw,76px);line-height:1.2;letter-spacing:-2px}@keyframes rainbowFlow{0%{background-position:0% center}100%{background-position:300% center}}header p{margin:10px 0 0;color:#d6d9e2;font-size:13px;text-align:center}.tags{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-top:12px}.tags span{border:1px solid #705a2b;background:#161a22;border-radius:20px;padding:6px 10px;color:#f5d88f;font-size:10px}main{max-width:1400px;margin:auto;padding:16px 14px}.search{width:100%;padding:13px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:white;font-size:16px;margin:10px 0 12px}.search:focus{outline:1px solid var(--gold)}.modes{display:flex;gap:8px;margin:0 0 18px}.mode{flex:1;padding:11px 6px;border-radius:10px;border:1px solid #344158;background:#151e2e;color:#d6d9e2;font-size:14px;font-weight:bold;cursor:pointer;transition:background .15s,color .15s}.mode:hover{border-color:#a17c36}.mode.active{background:var(--gold);color:#17130a;border-color:var(--gold)}.typeBadge{position:absolute;top:6px;left:6px;z-index:1;background:#000b;color:#f5d88f;border:1px solid #705a2b;border-radius:5px;padding:2px 6px;font-size:10px;font-weight:bold;letter-spacing:.5px}.sectionTitle{font-size:clamp(17px,2.5vw,22px);margin:18px 0 12px}.movies{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}.card{position:relative;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .18s,border-color .18s}.card:hover{transform:translateY(-3px);border-color:#a17c36}.card>img,.poster{display:block;width:100%;aspect-ratio:2/3;object-fit:cover}.poster{display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;background:linear-gradient(145deg,#1a2336,#292315);color:#f5d88f;font-size:22px;font-weight:bold}.info{padding:9px}.info h3{font-size:14px;line-height:1.3;margin:2px 0 6px;overflow-wrap:anywhere}.info p{color:var(--muted);font-size:11px;line-height:1.4;margin:5px 0}.overview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.rating{color:#fbbf24!important;font-weight:bold}.btn{width:100%;display:block;text-align:center;text-decoration:none;border:0;border-radius:7px;padding:10px 5px;margin-top:7px;font-size:12px;font-weight:bold;cursor:pointer}.watch{background:linear-gradient(110deg,#f1c45e,#fff0b8);color:#1a160b}.download{border:1px solid #8c713b;color:#f5d88f;background:transparent}
 .btn.torrentBtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin-top:16px;padding:16px 12px;font-size:17px;border:0;border-radius:10px;color:#fff;background:linear-gradient(110deg,#16a34a,#22c55e);box-shadow:0 4px 14px #16a34a55;transition:background .18s,transform .12s}.btn.torrentBtn:hover{background:linear-gradient(110deg,#15803d,#16a34a)}.btn.torrentBtn:active{transform:scale(.98)}.btn.torrentBtn svg{width:24px;height:24px;flex:none}
 .note,footer{color:#9eabc0;font-size:12px;line-height:1.7}footer{text-align:center;padding:24px 12px;border-top:1px solid var(--line)}.status{text-align:center;color:var(--muted);padding:16px 8px;font-size:13px}.status.error{color:#f87171}.spinner{display:inline-block;width:20px;height:20px;border:3px solid #344158;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:8px}@keyframes spin{to{transform:rotate(360deg)}}.pagination{display:flex;justify-content:center;gap:7px;padding:12px 0 22px;flex-wrap:wrap}.pagination button{padding:8px 12px;border-radius:8px;border:1px solid #344158;background:#151e2e;color:white;cursor:pointer}.pagination button.current{background:var(--gold);color:#17130a;border-color:var(--gold)}.pagination button:disabled{opacity:.4}#detailBox,#torrentBox,#playerBox{display:none;position:fixed;inset:0;background:#000e;z-index:99;overflow:auto;padding:15px}.detailContent,.torrentContent,.playerContent{max-width:700px;margin:28px auto;background:var(--panel);padding:15px;border:1px solid #44371f;border-radius:12px}.playerContent{max-width:900px}#moviePlayer{width:100%;max-height:70vh;background:#000}.close{float:right;background:var(--gold);color:#1a160b;border:0;border-radius:6px;padding:9px 11px;cursor:pointer;font-weight:bold}.torrentItem{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}.t-title{font-size:13px;overflow-wrap:anywhere}.t-meta{color:var(--muted);font-size:11px;margin:6px 0;display:flex;flex-wrap:wrap;gap:10px}.badge{background:#292315;border-radius:4px;padding:3px 7px;font-size:11px;color:#f5d88f}.src{color:#9eabc0;font-size:10px}.torrentEmpty{text-align:center;padding:18px;color:var(--muted)}
-@media(max-width:600px){main{padding:10px 7px}.movies{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{font-size:13px;padding:10px 3px}.typeBadge{top:4px;left:4px;font-size:8px;padding:1px 4px}.card{border-radius:7px}.info{padding:5px}.info h3{font-size:clamp(10px,3vw,13px);line-height:1.25;margin:1px 0 5px}.info p{font-size:clamp(9px,2.5vw,11px);line-height:1.3;margin:4px 0}.info .overview{display:none}.btn{font-size:clamp(9px,2.5vw,11px);padding:8px 3px;margin-top:5px;border-radius:5px}.sectionTitle{margin:15px 0 9px}.search{font-size:14px;padding:12px}header{padding:17px 8px}.brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}.tags{gap:5px}.tags span{font-size:9px;padding:4px 6px}.detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}.btn.torrentBtn{font-size:16px;padding:15px 10px}}
+.seasonBtns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}.seasonBtn{flex:1 1 calc(33.33% - 8px);min-width:96px;padding:11px 6px;border-radius:9px;border:1px solid #344158;background:#151e2e;color:#fff;font-size:14px;font-weight:bold;line-height:1.35;cursor:pointer;transition:background .15s,border-color .15s}.seasonBtn small{display:block;color:var(--muted);font-weight:normal;font-size:10px;margin-top:2px}.seasonBtn:hover{border-color:#22c55e}.seasonBtn.active{background:linear-gradient(110deg,#16a34a,#22c55e);border-color:#22c55e}.seasonBtn.active small{color:#eafff0}
+.seasonHead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 12px}.seasonHead h4{margin:0;color:#f5d88f;font-size:16px}
+.epItem{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}.epItem.packItem{border-color:#496b5a}.epHead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:4px}.epNo{background:#292315;color:#f5d88f;border-radius:5px;padding:2px 7px;font-size:11px;font-weight:bold}.epName{flex:1 1 140px;min-width:0;font-size:13px;font-weight:bold;overflow-wrap:anywhere}.epDate{color:var(--muted);font-size:11px;white-space:nowrap}
+.epBody .status{padding:8px 4px;font-size:12px;text-align:left}.missing{color:var(--muted);font-size:12px;padding:4px 0 8px}
+.tRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:9px 0;border-top:1px solid #1e283a;font-size:12px}.epBody .tRow:first-child,.packItem .epHead+.tRow{border-top:0}.tInfo{flex:1 1 170px;min-width:0}.tName{color:#7f8ca3;font-size:10px;margin-top:3px;overflow-wrap:anywhere}.tBtns{display:flex;gap:6px}
+.mini{display:inline-block;padding:8px 11px;border-radius:7px;font-size:12px;font-weight:bold;text-decoration:none;border:0;cursor:pointer;text-align:center}.mini.mag{background:linear-gradient(110deg,#16a34a,#22c55e);color:#fff}.mini.file{border:1px solid #8c713b;color:#f5d88f;background:transparent}.mini:disabled{opacity:.55;cursor:default}.moreBtn{background:none;border:0;color:#f5d88f;font-size:11px;cursor:pointer;padding:6px 0 2px}
+@media(max-width:600px){main{padding:10px 7px}.movies{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{font-size:13px;padding:10px 3px}.typeBadge{top:4px;left:4px;font-size:8px;padding:1px 4px}.card{border-radius:7px}.info{padding:5px}.info h3{font-size:clamp(10px,3vw,13px);line-height:1.25;margin:1px 0 5px}.info p{font-size:clamp(9px,2.5vw,11px);line-height:1.3;margin:4px 0}.info .overview{display:none}.btn{font-size:clamp(9px,2.5vw,11px);padding:8px 3px;margin-top:5px;border-radius:5px}.sectionTitle{margin:15px 0 9px}.search{font-size:14px;padding:12px}header{padding:17px 8px}.brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}.tags{gap:5px}.tags span{font-size:9px;padding:4px 6px}.detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}.btn.torrentBtn{font-size:16px;padding:15px 10px}.seasonBtn{flex:1 1 calc(33.33% - 8px);min-width:0;font-size:13px}.tBtns{width:100%}.tBtns .mini{flex:1}}
 #intro{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;overflow:hidden;background:radial-gradient(ellipse at center,#222019 0%,#090d16 55%,#020308 100%);animation:introExit .7s ease 3.7s forwards}.intro-glow{position:absolute;width:75vw;height:75vw;max-width:600px;max-height:600px;border-radius:50%;background:#f3c76612;filter:blur(60px);animation:pulse 2s ease-in-out infinite alternate}.intro-brand{position:relative;z-index:1;font-size:clamp(35px,9vw,78px);letter-spacing:-2px;line-height:1.25}.intro-line{height:2px;width:min(280px,65vw);margin:18px auto;background:linear-gradient(90deg,transparent,#f3c766,transparent)}.intro-caption,.intro-sub{position:relative;z-index:1;color:#f5d88f;font-size:clamp(10px,2.7vw,13px);letter-spacing:3px}.intro-sub{margin-top:15px;color:#b8c0d0;font-size:11px;letter-spacing:2px}@keyframes introExit{to{opacity:0;visibility:hidden}}@keyframes pulse{from{transform:scale(.8);opacity:.5}to{transform:scale(1.15);opacity:1}}@media(prefers-reduced-motion:reduce){.brand,.intro-brand{animation:none!important}}
 </style></head>
 <body class="lock"><div id="intro"><div class="intro-glow"></div><div class="intro-brand">CineX Zone</div><div class="intro-line"></div><div class="intro-caption">WATCH · TORRENT · DOWNLOAD</div><div class="intro-sub">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div></div>
@@ -146,33 +152,162 @@ $('detailTorrentsBtn').onclick=()=>{closeDetail();if(currentMovie)openTorrents(c
 function playTrailer(){if(!currentMovie||!currentMovie.trailerUrl)return;closeDetail();const v=$('moviePlayer');$('playerTitle').textContent=(currentMovie.title||'Title')+' · Trailer';v.innerHTML='';v.src=currentMovie.trailerUrl;$('playerBox').style.display='block';document.body.style.overflow='hidden';v.play().catch(()=>{window.open(currentMovie.trailerUrl,'_blank','noopener');closeMovie()})}
 
 // ---------- Torrent sources ----------
+let tvToken=0,seasonToken=0,seasonState=null;
+const pad2=n=>String(n).padStart(2,'0');
+const spinnerHtml=t=>'<p class="status"><span class="spinner"></span>'+esc(t)+'</p>';
+
 async function openTorrents(m){
   lastTorrentMovie=m;
-  const isTv=m.type==='tv';
+  tvToken++;seasonToken++;
   $('torrentTitle').textContent=m.title+(m.year?' ('+m.year+')':'');
-  const list=$('torrentList');
-  list.innerHTML='<p class="status"><span class="spinner"></span>Checking other sources…</p>';
   $('torrentBox').style.display='block';document.body.style.overflow='hidden';
+  // TV shows from TMDB: pick a season first. Everything else: normal list.
+  if(m.type==='tv'&&m.source==='TMDB'&&/^\d+$/.test(m.id||''))return openTvSeasons(m);
+  const list=$('torrentList');
+  list.innerHTML='';
+  const box=document.createElement('div');list.appendChild(box);
+  fillFlat(box,m);
+}
+
+// ----- plain list (movies, or "general search" for a show) -----
+async function fillFlat(el,m,notice){
+  const isTv=m.type==='tv';
+  el.innerHTML=(notice?'<p class="src">'+esc(notice)+'</p>':'')+spinnerHtml('Checking other sources…');
   try{
-    const data=await withTimeout(api('/api/torrents',{q:m.title,year:isTv?'':(m.year||''),type:isTv?'tv':'movie'}),20000);
-    if(data.providerError){list.innerHTML='<div class="torrentEmpty">'+esc(data.providerError)+'<br><span class="src">Source index temporarily unreachable.</span></div>'+retryButtonHtml();return}
-    renderTorrents(data.torrents||[]);
-  }catch(e){list.innerHTML='<p class="status error">Source search failed: '+esc(e.message)+'</p>'+retryButtonHtml()}
+    const data=await withTimeout(api('/api/torrents',{q:m.title,year:isTv?'':(m.year||''),type:isTv?'tv':'movie'}),25000);
+    if(data.providerError){el.innerHTML=(notice?'<p class="src">'+esc(notice)+'</p>':'')+'<div class="torrentEmpty">'+esc(data.providerError)+'<br><span class="src">Source index temporarily unreachable.</span></div>'+retryButtonHtml();return}
+    renderTorrents(data.torrents||[],el,notice);
+  }catch(e){el.innerHTML='<p class="status error">Source search failed: '+esc(e.message)+'</p>'+retryButtonHtml()}
 }
 function retryButtonHtml(){return '<button class="btn download" type="button" onclick="retryTorrents()">↻ Retry</button>'}
 function retryTorrents(){if(lastTorrentMovie)openTorrents(lastTorrentMovie)}
-function renderTorrents(ts){
-  const list=$('torrentList');
-  if(!ts.length){list.innerHTML='<div class="torrentEmpty">No matching sources returned. Use only content you have permission to download or share.</div>'+retryButtonHtml();return}
-  list.innerHTML='';
+function renderTorrents(ts,el,notice){
+  el=el||$('torrentList');
+  if(!ts.length){el.innerHTML=(notice?'<p class="src">'+esc(notice)+'</p>':'')+'<div class="torrentEmpty">No matching sources returned. Use only content you have permission to download or share.</div>'+retryButtonHtml();return}
+  el.innerHTML=notice?'<p class="src">'+esc(notice)+'</p>':'';
   for(const t of ts.slice(0,15)){
     const item=document.createElement('div');item.className='torrentItem';
     const res=t.resolution||t.quality||'',dl=safeUrl(t.torrentUrl),mag=safeUrl(t.magnet);
     item.innerHTML='<div class="t-title">'+esc(t.title)+'</div><div class="t-meta">'+(res?'<span class="badge">'+esc(res)+'</span>':'')+'<span>'+esc(t.size||'')+'</span><span>↑ '+(t.seeds??0)+' · ↓ '+(t.peers??0)+'</span></div>'+(t.source?'<div class="src">Source: '+esc(t.source)+'</div>':'')+(dl?'<a class="btn download" href="'+esc(dl)+'" target="_blank" rel="noopener noreferrer">Open source file</a>':'')+(mag?'<a class="btn watch" href="'+esc(mag)+'" rel="noopener noreferrer">Open magnet link</a>':'');
-    list.appendChild(item);
+    el.appendChild(item);
   }
 }
-function closeTorrents(){$('torrentBox').style.display='none';document.body.style.overflow=''}
+
+// ----- TV: season buttons -----
+async function openTvSeasons(m){
+  const list=$('torrentList'),token=tvToken;
+  list.innerHTML=spinnerHtml('Loading seasons…');
+  try{
+    const data=await withTimeout(api('/api/tv/seasons',{id:m.id}),15000);
+    if(token!==tvToken)return;
+    const seasons=data.seasons||[];
+    if(!seasons.length){list.innerHTML='';const box=document.createElement('div');list.appendChild(box);return fillFlat(box,m,'No season list found for this show — showing general results.')}
+    renderSeasonPicker(m,seasons);
+  }catch(e){
+    if(token!==tvToken)return;
+    list.innerHTML='';const box=document.createElement('div');list.appendChild(box);
+    fillFlat(box,m,'Season list unavailable ('+e.message+') — showing general results.');
+  }
+}
+function renderSeasonPicker(m,seasons){
+  const list=$('torrentList');
+  list.innerHTML='<p class="note">Choose a season to see every episode with its date, size and download links.</p>'
+    +'<div class="seasonBtns">'+seasons.map(s=>'<button type="button" class="seasonBtn" data-s="'+s.season+'">Season '+s.season+'<small>'+s.episodes+' episode'+(s.episodes===1?'':'s')+(s.year?' · '+esc(s.year):'')+'</small></button>').join('')+'</div>'
+    +'<div id="seasonView"></div>'
+    +'<button type="button" class="btn download" id="generalBtn">🔎 General search (full-series packs)</button>';
+  list.querySelectorAll('.seasonBtn').forEach(b=>b.onclick=()=>loadSeason(m,Number(b.dataset.s)));
+  $('generalBtn').onclick=()=>{
+    seasonToken++;seasonState=null;
+    list.querySelectorAll('.seasonBtn').forEach(b=>b.classList.remove('active'));
+    fillFlat($('seasonView'),m);
+  };
+  if(seasons.length===1)loadSeason(m,seasons[0].season);
+}
+
+// ----- TV: one season = episodes in order, each with its torrents -----
+function torrentRowHtml(t){
+  const res=t.resolution||t.quality||'',dl=safeUrl(t.torrentUrl),mag=safeUrl(t.magnet);
+  return '<div class="tRow"><div class="tInfo">'+(res?'<span class="badge">'+esc(res)+'</span> ':'')+'<b>'+esc(t.size||'size n/a')+'</b> · ↑ '+(t.seeds??0)+' ↓ '+(t.peers??0)+(t.source?' · '+esc(t.source):'')+'<div class="tName">'+esc(t.title)+'</div></div>'
+    +'<div class="tBtns">'+(mag?'<a class="mini mag" href="'+esc(mag)+'" rel="noopener noreferrer">⬇ Download</a>':'')+(dl?'<a class="mini file" href="'+esc(dl)+'" target="_blank" rel="noopener noreferrer">.torrent</a>':'')+'</div></div>';
+}
+function rowsHtml(ts){
+  const shown=ts.slice(0,3),rest=ts.slice(3);
+  return shown.map(torrentRowHtml).join('')
+    +(rest.length?'<div class="moreRows" hidden>'+rest.map(torrentRowHtml).join('')+'</div><button type="button" class="moreBtn" data-more="1">Show '+rest.length+' more</button>':'');
+}
+// episodes a release covers (double episodes like S01E03E04 count for both)
+function episodesOf(t){
+  if(t.episode==null)return [];
+  const end=t.episodeEnd&&t.episodeEnd>=t.episode?Math.min(t.episodeEnd,t.episode+9):t.episode;
+  const out=[];for(let e=t.episode;e<=end;e++)out.push(e);return out;
+}
+function fillEpisode(st,epNo){
+  const body=$('ep-'+epNo);if(!body)return;
+  const ts=st.byEp[epNo]||[];
+  body.innerHTML=ts.length?rowsHtml(ts):'<div class="missing">No torrent found yet.</div><button type="button" class="mini file" data-find="'+epNo+'">🔍 Search this episode</button>';
+}
+async function loadSeason(m,n){
+  const view=$('seasonView'),token=++seasonToken;
+  document.querySelectorAll('.seasonBtn').forEach(b=>b.classList.toggle('active',Number(b.dataset.s)===n));
+  view.innerHTML=spinnerHtml('Loading Season '+n+'…');
+  seasonState=null;
+  const torP=withTimeout(api('/api/torrents',{q:m.title,type:'tv',season:n}),35000).then(v=>({ok:true,v}),e=>({ok:false,e}));
+  let eps;
+  try{eps=await withTimeout(api('/api/tv/season',{id:m.id,season:n}),15000)}
+  catch(e){if(token!==seasonToken)return;view.innerHTML='<p class="status error">Could not load episodes: '+esc(e.message)+'</p><button type="button" class="btn download" id="seasonRetry">↻ Retry</button>';$('seasonRetry').onclick=()=>loadSeason(m,n);return}
+  if(token!==seasonToken)return;
+  const episodes=eps.episodes||[];
+  if(!episodes.length){view.innerHTML='<p class="status">No aired episodes found for Season '+n+' yet.</p>';return}
+  const st=seasonState={token,movie:m,season:n,episodes,byEp:{},packs:[]};
+  // episode list first (fast), torrent results fill in afterwards
+  view.innerHTML='<div class="seasonHead"><h4>Season '+n+' · '+episodes.length+' episode'+(episodes.length===1?'':'s')+'</h4><button type="button" class="mini file" data-allmissing="1" disabled>Searching…</button></div><div id="packsBox"></div>'
+    +episodes.map(ep=>'<div class="epItem"><div class="epHead"><span class="epNo">E'+pad2(ep.episode)+'</span><span class="epName">'+esc(ep.name)+'</span><span class="epDate">'+esc(ep.airDate||'')+(ep.runtime?' · '+ep.runtime+' min':'')+'</span></div><div class="epBody" id="ep-'+ep.episode+'">'+spinnerHtml('Searching torrents…')+'</div></div>').join('');
+  const res=await torP;
+  if(token!==seasonToken)return;
+  const data=res.ok?res.v:{torrents:[],providerError:res.e.message};
+  for(const t of (data.torrents||[])){
+    if(t.season!=null&&t.season!==n)continue;
+    const covered=episodesOf(t);
+    if(!covered.length){st.packs.push(t);continue}
+    for(const e of covered)(st.byEp[e]=st.byEp[e]||[]).push(t);
+  }
+  if(st.packs.length)$('packsBox').innerHTML='<div class="epItem packItem"><div class="epHead"><span class="epNo">PACK</span><span class="epName">Full Season '+n+'</span></div>'+rowsHtml(st.packs)+'</div>';
+  for(const ep of episodes)fillEpisode(st,ep.episode);
+  const btn=view.querySelector('[data-allmissing]');
+  if(btn){btn.disabled=false;btn.textContent='🔍 Find all missing'}
+  if(data.providerError&&!(data.torrents||[]).length){const p=document.createElement('p');p.className='src';p.textContent=data.providerError;view.insertBefore(p,view.children[1])}
+}
+async function findEpisode(st,epNo){
+  const body=$('ep-'+epNo);if(!body)return;
+  body.innerHTML=spinnerHtml('Searching E'+pad2(epNo)+'…');
+  try{
+    const d=await withTimeout(api('/api/torrents',{q:st.movie.title,type:'tv',season:st.season,episode:epNo}),30000);
+    if(st.token!==seasonToken)return;
+    st.byEp[epNo]=(d.torrents||[]).filter(t=>t.season===st.season||t.season==null);
+  }catch(e){if(st.token!==seasonToken)return;st.byEp[epNo]=[]}
+  fillEpisode(st,epNo);
+}
+// one click handler for everything inside the season view
+document.addEventListener('click',async ev=>{
+  const st=seasonState;if(!st)return;
+  const find=ev.target.closest('[data-find]');
+  if(find){find.disabled=true;findEpisode(st,Number(find.dataset.find));return}
+  const more=ev.target.closest('[data-more]');
+  if(more){const box=more.previousElementSibling;if(box){box.hidden=!box.hidden;more.textContent=box.hidden?'Show '+box.children.length+' more':'Show less'}return}
+  const all=ev.target.closest('[data-allmissing]');
+  if(all&&!all.disabled){
+    const missing=st.episodes.filter(e=>!(st.byEp[e.episode]&&st.byEp[e.episode].length));
+    if(!missing.length){all.textContent='✓ Nothing missing';return}
+    all.disabled=true;let i=0;
+    for(const e of missing){
+      if(st.token!==seasonToken)return;
+      all.textContent='Searching '+(++i)+'/'+missing.length+'…';
+      await findEpisode(st,e.episode);
+    }
+    if(st.token===seasonToken){all.textContent='✓ Done';}
+  }
+});
+function closeTorrents(){tvToken++;seasonToken++;seasonState=null;$('torrentBox').style.display='none';document.body.style.overflow=''}
 function closeMovie(){const v=$('moviePlayer');v.pause();v.currentTime=0;v.removeAttribute('src');v.load();$('playerBox').style.display='none';document.body.style.overflow=''}
 
 setTimeout(()=>{const i=$('intro');if(i)i.remove();document.body.classList.remove('lock')},4500);
