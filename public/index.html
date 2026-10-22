@@ -180,7 +180,7 @@ async function fillFlat(el,m,notice){
   const isTv=m.type==='tv';
   el.innerHTML=(notice?'<p class="src">'+esc(notice)+'</p>':'')+spinnerHtml('Checking other sources…');
   try{
-    const data=await withTimeout(api('/api/torrents',{q:m.title,year:isTv?'':(m.year||''),type:isTv?'tv':'movie'}),25000);
+    const data=await withTimeout(api('/api/torrents',{q:m.title,year:m.year||'',type:isTv?'tv':'movie',country:isTv?(m.country||''):''}),25000);
     if(data.providerError){el.innerHTML=(notice?'<p class="src">'+esc(notice)+'</p>':'')+'<div class="torrentEmpty">'+esc(data.providerError)+'<br><span class="src">Source index temporarily unreachable.</span></div>'+retryButtonHtml();return}
     renderTorrents(data.torrents||[],el,notice);
   }catch(e){el.innerHTML='<p class="status error">Source search failed: '+esc(e.message)+'</p>'+retryButtonHtml()}
@@ -257,7 +257,7 @@ async function loadSeason(m,n){
   document.querySelectorAll('.seasonBtn').forEach(b=>b.classList.toggle('active',Number(b.dataset.s)===n));
   view.innerHTML=spinnerHtml('Loading Season '+n+'…');
   seasonState=null;
-  const torP=withTimeout(api('/api/torrents',{q:m.title,type:'tv',season:n}),35000).then(v=>({ok:true,v}),e=>({ok:false,e}));
+  const torP=withTimeout(api('/api/torrents',{q:m.title,type:'tv',season:n,year:m.year||'',country:m.country||''}),35000).then(v=>({ok:true,v}),e=>({ok:false,e}));
   let eps;
   try{eps=await withTimeout(api('/api/tv/season',{id:m.id,season:n}),15000)}
   catch(e){if(token!==seasonToken)return;view.innerHTML='<p class="status error">Could not load episodes: '+esc(e.message)+'</p><button type="button" class="btn download" id="seasonRetry">↻ Retry</button>';$('seasonRetry').onclick=()=>loadSeason(m,n);return}
@@ -287,7 +287,7 @@ async function findEpisode(st,epNo){
   const body=$('ep-'+epNo);if(!body)return;
   body.innerHTML=spinnerHtml('Searching E'+pad2(epNo)+'…');
   try{
-    const d=await withTimeout(api('/api/torrents',{q:st.movie.title,type:'tv',season:st.season,episode:epNo}),30000);
+    const d=await withTimeout(api('/api/torrents',{q:st.movie.title,type:'tv',season:st.season,episode:epNo,year:st.movie.year||'',country:st.movie.country||''}),30000);
     if(st.token!==seasonToken)return;
     st.byEp[epNo]=(d.torrents||[]).filter(t=>t.season===st.season||t.season==null);
   }catch(e){if(st.token!==seasonToken)return;st.byEp[epNo]=[]}
