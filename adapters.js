@@ -98,6 +98,7 @@ export const metadataAdapters = {
           id: String(m.id),
           type: kind,
           title,
+          country: isTv ? ((m.origin_country || [])[0] || '') : '',
           year: date.slice(0, 4),
           releaseDate: date,
           overview: m.overview || '',
@@ -274,11 +275,11 @@ export const torrentAdapters = {
 
   // ---------------- The Pirate Bay (apibay) ----------------
   tpb: {
-    async search(cfg, q, page = 1) {
+    async search(cfg, q, page = 1, opts = {}) {
       const base = normalizeBase(cfg.tpbBase || 'https://apibay.org');
       // cat 200 = all video (207 was HD movies only)
       const url = base + '/q.php?' +
-        new URLSearchParams({ q, cat: '200' }).toString();
+        new URLSearchParams({ q: queryWithYear(q, opts), cat: '200' }).toString();
 
       const data = await fetchJSON(url);
 
@@ -321,7 +322,7 @@ export const torrentAdapters = {
   // ---------------- Knaben ----------------
   knaben: {
     // Keyless aggregator. POST https://api.knaben.org/v1, results in "hits".
-    async search(cfg, q, page = 1) {
+    async search(cfg, q, page = 1, opts = {}) {
       let res;
       try {
         res = await fetch('https://api.knaben.org/v1', {
@@ -334,7 +335,7 @@ export const torrentAdapters = {
           body: JSON.stringify({
             search_type: '100%',
             search_field: 'title',
-            query: q,
+            query: queryWithYear(q, opts),
             order_by: 'seeders',
             order_direction: 'desc',
             from: 0,
@@ -416,9 +417,9 @@ export const torrentAdapters = {
 
   // ---------------- torrents-csv ----------------
   torrentscsv: {
-    async search(cfg, q, page = 1) {
+    async search(cfg, q, page = 1, opts = {}) {
       const url = 'https://torrents-csv.com/service/search?' +
-        new URLSearchParams({ q, size: '100' }).toString();
+        new URLSearchParams({ q: queryWithYear(q, opts), size: '100' }).toString();
 
       const data = await fetchJSON(url, 8000);
 
@@ -478,7 +479,7 @@ export const torrentAdapters = {
       const params = new URLSearchParams({
         apikey: cfg.jackettKey,
         t: opts.type === 'tv' ? 'tvsearch' : 'movie',
-        q,
+        q: queryWithYear(q, opts),
         limit: '50',
         offset: String((page - 1) * 50),
       });
@@ -573,7 +574,7 @@ export const torrentAdapters = {
 
       const base = normalizeBase(cfg.prowlarrBase);
       const params = new URLSearchParams({
-        query: q,
+        query: queryWithYear(q, opts),
         type: 'search',
         apikey: cfg.prowlarrKey,
       });
@@ -717,6 +718,12 @@ function parseSize(value) {
 function isHttpUrl(value) {
   return typeof value === 'string' &&
     (value.startsWith('https://') || value.startsWith('http://'));
+}
+
+// Movies: add the year to the search words so the right film (not another
+// film with the same name) is in the provider's top results. Not used for YTS.
+function queryWithYear(q, opts) {
+  return opts && opts.type !== 'tv' && opts.year ? q + ' ' + opts.year : q;
 }
 
 function normalizeBase(value) {
