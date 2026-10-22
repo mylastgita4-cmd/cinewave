@@ -367,6 +367,7 @@ function mapTmdbItem(m, cfg, kind) {
     id: String(m.id),
     type: kind,
     title: (isTv ? m.name : m.title) || '',
+    country: isTv ? ((m.origin_country || [])[0] || '') : '',
     year: date.slice(0, 4),
     releaseDate: date,
     overview: m.overview || '',
@@ -786,14 +787,126 @@ function seasonEpisodeMatch(title, season, episode) {
   return info.episode === episode;
 }
 
+// ---------------- STRICT RELEASE MATCHING ----------------
+// A torrent is only shown when its name is *this* title (and this year).
+// "Avatar" must not match "Avatar The Way of Water", a 2026 card must not
+// match a 2025 release, "The Office" must not match "The Office UK" for a US
+// show, and so on.
+
+const YEAR_TOKEN = /^(?:19|20)\d{2}$/;
+
+// qualifier words some releases put right after a TV title -> ISO country
+const COUNTRY_TAGS = {
+  us: 'US', usa: 'US', uk: 'GB', gb: 'GB', au: 'AU', ca: 'CA',
+  nz: 'NZ', ie: 'IE', de: 'DE', fr: 'FR', jp: 'JP', kr: 'KR',
+};
+
+// words that may legitimately follow the title in a release name
+const RELEASE_TAGS = new Set([
+  'bluray', 'blu', 'ray', 'bdrip', 'brrip', 'bd', 'dvdrip', 'dvdscr', 'dvd', 'hdrip',
+  'webrip', 'web', 'webdl', 'dl', 'hdtv', 'pdtv', 'hdcam', 'cam', 'camrip', 'ts', 'tc',
+  'telesync', 'hdts', 'screener', 'scr', 'remux', 'rip', 'hd', 'sd', 'uhd', '4k', 'hdr',
+  'hdr10', 'hdr10plus', 'dv', 'dovi', 'hybrid', 'x264', 'x265', 'h264', 'h265', 'hevc',
+  'avc', 'xvid', 'divx', 'aac', 'ac3', 'eac3', 'dts', 'ddp', 'dd', 'atmos', 'truehd',
+  'flac', 'mp3', 'amzn', 'nf', 'dsnp', 'hmax', 'hulu', 'atvp', 'pcok', 'max', 'proper',
+  'repack', 'internal', 'extended', 'unrated', 'uncut', 'remastered', 'imax',
+  'theatrical', 'directors', 'cut', 'edition', 'version', 'restored', 'criterion',
+  'final', 'special', 'collectors', 'anniversary', 'ultimate', 'open', 'matte',
+  'dubbed', 'dual', 'multi', 'multisub', 'subbed', 'esub', 'esubs', 'sub', 'subs',
+  'audio', 'hindi', 'tamil', 'telugu', 'malayalam', 'english', 'eng', 'hin', 'french',
+  'german', 'spanish', 'italian', 'russian', 'portuguese', 'polish', 'turkish', 'arabic',
+  'dutch', 'swedish', 'korean', 'japanese', 'chinese', 'thai', 'ita', 'fre', 'ger',
+  'spa', 'rus', 'por', 'pol', 'tur', 'ara', 'jpn', 'kor', 'chi', 'complete', 'season',
+  'seasons', 'series', 'episode', 'episodes', 'ep', 'yify', 'yts', 'rarbg', 'ettv',
+  'eztv', 'tgx', 'repost', 'sample',
+]);
+
+function looseNorm(value) {
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’`]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function isTagToken(t) {
+  return RELEASE_TAGS.has(t) ||
+    /^\d{3,4}p$/.test(t) || /^\d{1,2}bit$/.test(t) ||
+    /^s\d{1,2}(?:e\d{1,3})*$/.test(t) || /^e\d{1,3}$/.test(t) ||
+    /^\d{1,2}x\d{2,3}$/.test(t) || /^ddp?\d$/.test(t);
+}
+
+// "[YTS.MX] Title ..." / "www.site.com - Title ..." -> "Title ..."
+function stripReleasePrefix(title) {
+  let out = String(title || '');
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(
+      /^\s*(?:\[[^\]]*\]|\([^)]*\)|www\.[a-z0-9.-]+\s*[-–—:]?)\s*/i, ''
+    );
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+function matchOneRelease(raw, want, opts) {
+  const norm = looseNorm(raw);
+  if (norm !== want && !norm.startsWith(want + ' ')) return false;
+
+  const tokens = norm.length > want.length
+    ? norm.slice(want.length + 1).split(' ')
+    : [];
+
+  let i = 0;
+
+  // TV: optional country qualifier ("The Office US")
+  if (opts.kind === 'tv' && tokens[i] && COUNTRY_TAGS[tokens[i]]) {
+    if (opts.country && COUNTRY_TAGS[tokens[i]] !== opts.country) return false;
+    i++;
+  }
+
+  const first = tokens[i];
+
+  if (first !== undefined) {
+    // "Title 2026 ..." -> the year has to be the wanted one
+    if (YEAR_TOKEN.test(first)) {
+      return !opts.year || Number(first) === opts.year;
+    }
+    // anything else right after the title must be a release tag,
+    // otherwise it is a different title ("Avatar The Last Airbender")
+    if (!isTagToken(first)) return false;
+  }
+
+  // Movies: no year right after the title -> look further, and if the year
+  // cannot be confirmed as the wanted one the release is not shown.
+  if (opts.kind === 'movie' && opts.year) {
+    const later = tokens.slice(i).find(t => YEAR_TOKEN.test(t));
+    return later !== undefined && Number(later) === opts.year;
+  }
+
+  return true;
+}
+
+function releaseMatches(rawTitle, wantedTitle, opts) {
+  const want = looseNorm(wantedTitle);
+  if (!want) return true; // title in a script we cannot compare: do not block
+
+  const stripped = stripReleasePrefix(rawTitle);
+  return matchOneRelease(rawTitle, want, opts) ||
+    (stripped !== rawTitle && matchOneRelease(stripped, want, opts));
+}
+
 // ---------------- TORRENT SEARCH ----------------
 
 async function handleTorrents(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
   const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
-  const year = type === 'tv'
-    ? 0
-    : (parseInt(url.searchParams.get('year') || '0', 10) || 0);
+  const year = parseInt(url.searchParams.get('year') || '0', 10) || 0;
+  const country = type === 'tv'
+    ? (url.searchParams.get('country') || '').trim().toUpperCase().slice(0, 2)
+    : '';
   const season = type === 'tv'
     ? Math.min(99, Math.max(0, parseInt(url.searchParams.get('season') || '0', 10) || 0))
     : 0;
@@ -810,13 +923,13 @@ async function handleTorrents(env, cfg, url, cors) {
     : q;
 
   // How many matching results are enough before we stop asking more providers
-  const needed = episode ? 4 : (season ? 6 : cfg.torrentMinResults);
+  const needed = episode ? 3 : (season ? 6 : Math.min(cfg.torrentMinResults, 5));
 
   if (!q) return json({ error: 'Missing query' }, 400, cors);
   if (q.length > 200) return json({ error: 'Query too long' }, 400, cors);
 
   const normTitle = normalizeTitle(q);
-  const key = 'torrents:multi:' + kp + normTitle + ':' + year;
+  const key = 'torrents:v3:multi:' + kp + normTitle + ':' + year + (country ? ':' + country : '');
   const cached = await cacheGet(env, key);
 
   if (cached) return json(cached, 200, cors);
@@ -825,9 +938,16 @@ async function handleTorrents(env, cfg, url, cors) {
   const merged = [];
   const usedProviders = [];
 
-  const countWanted = () => season
-    ? merged.filter(t => seasonEpisodeMatch(t.title, season, episode)).length
-    : merged.length;
+  // Only releases of exactly this title / year / season / episode are kept.
+  const relevant = t => {
+    const title = String(t.title || '');
+    if (!(t.magnet || t.torrentUrl)) return false;
+    if (!releaseMatches(title, q, { kind: type, year, country })) return false;
+    if (season && !seasonEpisodeMatch(title, season, episode)) return false;
+    return true;
+  };
+
+  const countWanted = () => merged.length;
 
   for (const providerName of cfg.torrentFallbacks) {
     if (countWanted() >= needed) break;
@@ -857,14 +977,23 @@ async function handleTorrents(env, cfg, url, cors) {
     try {
       const data = await withProviderRetry(env, cfg, providerName, () =>
         withTimeout(
-          adapter.search(cfg, searchQuery, 1, { type }),
+          adapter.search(cfg, searchQuery, 1, {
+            type,
+            year: type === 'movie' ? year : 0,
+            season,
+            episode,
+          }),
           cfg.torrentTimeoutMs
         )
       );
 
-      const items = data && Array.isArray(data.torrents)
+      const raw = data && Array.isArray(data.torrents)
         ? data.torrents
         : [];
+
+      const items = raw.filter(relevant);
+
+      if (raw.length) await clearCooldown(env, providerName);
 
       if (items.length) {
         merged.push(...items);
@@ -880,13 +1009,15 @@ async function handleTorrents(env, cfg, url, cors) {
         usedProviders.push(providerName);
       }
 
-      errors.push(providerName + ': no results');
+      errors.push(providerName + (raw.length
+        ? ': ' + raw.length + ' results, none matched this exact title'
+        : ': no results'));
     } catch (e) {
       errors.push(providerName + ': ' + (e.message || 'failed'));
     }
   }
 
-  const backupKey = 'torrents:backup:' + kp + normTitle + ':' + year;
+  const backupKey = 'torrents:v3:backup:' + kp + normTitle + ':' + year + (country ? ':' + country : '');
 
   if (!merged.length) {
     const backup = await getBackup(env, backupKey);
@@ -930,18 +1061,7 @@ async function handleTorrents(env, cfg, url, cors) {
     if (seen.has(uniqueKey)) return false;
     seen.add(uniqueKey);
 
-    if (normTitle && !normalizedContains(title, normTitle)) return false;
-
-    if (season && !seasonEpisodeMatch(title, season, episode)) return false;
-
-    if (year) {
-      const releaseYear = extractYear(title);
-      if (releaseYear && Math.abs(releaseYear - year) > 1) return false;
-    }
-
-    if (!t.magnet && !t.torrentUrl) return false;
-
-    return true;
+    return relevant(t);
   });
 
   torrents.sort((a, b) =>
