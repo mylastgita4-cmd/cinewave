@@ -29,6 +29,11 @@ export default {
           handleMovies(env, cfg, url, cors));
       }
 
+      if (url.pathname === '/api/torrent-file') {
+        return await withLimits(env, cfg, cors, () =>
+          handleTorrentFile(env, cfg, url, cors));
+      }
+
       if (url.pathname === '/api/torrents') {
         return await withLimits(env, cfg, cors, () =>
           handleTorrents(env, cfg, url, cors));
@@ -129,6 +134,13 @@ function readConfig(env) {
     ])],
     torrentTimeoutMs: positiveInt(env.TORRENT_TIMEOUT_MS, 12000),
     torrentRetries: nonNegativeInt(env.TORRENT_RETRIES, 2),
+    // how long to wait for the slowest torrent provider before answering
+    torrentDeadlineMs: positiveInt(env.TORRENT_DEADLINE_MS, 14000),
+    // public .torrent caches, comma separated, {HASH} = info-hash
+    torrentCaches: String(env.TORRENT_CACHE_URLS || '')
+      .split(',').map(x => x.trim()).filter(Boolean).length
+      ? String(env.TORRENT_CACHE_URLS).split(',').map(x => x.trim()).filter(Boolean)
+      : DEFAULT_TORRENT_CACHES,
     retryBaseMs: positiveInt(env.RETRY_BASE_MS, 600),
     cooldownTtl: Math.max(
       60, positiveInt(env.PROVIDER_COOLDOWN_TTL, 60)
@@ -900,6 +912,224 @@ function releaseMatches(rawTitle, wantedTitle, opts) {
 
 // ---------------- TORRENT SEARCH ----------------
 
+// ---------------- QUALITY (lowest -> highest) ----------------
+// Every release gets a label + rank so the page can list all qualities
+// from the lowest to the highest.
+
+function releaseRemainder(rawTitle, wantedTitle) {
+  const want = looseNorm(wantedTitle);
+  const rest = raw => {
+    const n = looseNorm(raw);
+    return want && (n === want || n.startsWith(want + ' '))
+      ? n.slice(want.length)
+      : null;
+  };
+  let r = rest(rawTitle);
+  if (r === null) r = rest(stripReleasePrefix(rawTitle));
+  // only look at the part AFTER the title ("Cam (2018)" is not a CAM rip)
+  return ' ' + (r === null ? looseNorm(rawTitle) : r.trim()) + ' ';
+}
+
+function detectQuality(rawTitle, resolution, wantedTitle) {
+  const t = releaseRemainder(rawTitle, wantedTitle) + ' ' + looseNorm(resolution) + ' ';
+  const has = re => re.test(t);
+
+  // cinema recordings stay "CAM / TS" even when the name also says 1080p
+  if (has(/ (cam|camrip|hdcam|hd cam|ts|hdts|hd ts|telesync|tc|hdtc|telecine|scr|screener|dvdscr|predvd|pre dvd) /)) {
+    return { label: 'CAM / TS', rank: 10, key: 'cam' };
+  }
+  if (has(/ (4320p|8k) /)) return { label: '8K · 4320p', rank: 100, key: '4320p' };
+  if (has(/ (2160p|4k|uhd) /)) return { label: '4K · 2160p', rank: 90, key: '2160p' };
+  if (has(/ 1440p /)) return { label: '2K · 1440p', rank: 80, key: '1440p' };
+  if (has(/ 3d /)) return { label: '3D', rank: 72, key: '3d' };
+  if (has(/ (1080p|1080i|fhd|full hd) /)) return { label: '1080p Full HD', rank: 70, key: '1080p' };
+  if (has(/ (720p|720i) /)) return { label: '720p HD', rank: 50, key: '720p' };
+  if (has(/ (576p|576i) /)) return { label: '576p', rank: 38, key: '576p' };
+  if (has(/ (480p|480i) /)) return { label: '480p', rank: 30, key: '480p' };
+  if (has(/ 360p /)) return { label: '360p', rank: 22, key: '360p' };
+  if (has(/ 240p /)) return { label: '240p', rank: 20, key: '240p' };
+  if (has(/ (dvdrip|dvd rip|dvd|dvd5|dvd9|dvdr|xvid|divx) /)) {
+    return { label: 'DVD / SD', rank: 32, key: 'dvd' };
+  }
+  if (has(/ (bluray|blu ray|bdrip|brrip|bd|remux|web dl|webdl|webrip|web|hdrip|hdtv) /)) {
+    return { label: 'HD (size not stated)', rank: 45, key: 'hd' };
+  }
+  return { label: 'Quality not stated', rank: 999, key: 'unknown' };
+}
+
+// ---------------- .TORRENT FILE (by info-hash) ----------------
+// GET /api/torrent-file?hash=<infohash>&name=<file name>
+// Asks public .torrent caches for the file, checks that it really is the
+// torrent with that info-hash (SHA-1 of the "info" dictionary) and returns it
+// as a download. If no cache has it, the page falls back to the magnet link.
+
+const DEFAULT_TORRENT_CACHES = [
+  'https://itorrents.org/torrent/{HASH}.torrent',
+  'https://torrage.info/torrent.php?h={HASH}',
+  'https://btcache.me/torrent/{HASH}',
+];
+
+function normalizeInfoHash(value) {
+  const v = String(value || '').trim();
+  if (/^[a-fA-F0-9]{40}$/.test(v)) return v.toLowerCase();
+
+  if (/^[A-Za-z2-7]{32}$/.test(v)) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let bits = '';
+    for (const ch of v.toUpperCase()) {
+      bits += alphabet.indexOf(ch).toString(2).padStart(5, '0');
+    }
+    let hex = '';
+    for (let i = 0; i < 160; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+    return hex;
+  }
+  return '';
+}
+
+// end position of the bencoded value that starts at index i
+function skipBencode(b, i, depth) {
+  if (depth > 40 || i >= b.length) throw new Error('bad bencode');
+  const c = b[i];
+
+  if (c === 0x69) { // i...e
+    const e = b.indexOf(0x65, i + 1);
+    if (e < 0) throw new Error('bad bencode');
+    return e + 1;
+  }
+
+  if (c === 0x6c || c === 0x64) { // l...e  or  d...e
+    let p = i + 1;
+    while (b[p] !== 0x65) {
+      if (p >= b.length) throw new Error('bad bencode');
+      p = skipBencode(b, p, depth + 1);
+    }
+    return p + 1;
+  }
+
+  if (c >= 0x30 && c <= 0x39) { // <len>:<bytes>
+    let j = i;
+    while (b[j] >= 0x30 && b[j] <= 0x39) j++;
+    if (b[j] !== 0x3a || j - i > 9) throw new Error('bad bencode');
+    const len = Number(String.fromCharCode(...b.subarray(i, j)));
+    const end = j + 1 + len;
+    if (end > b.length) throw new Error('bad bencode');
+    return end;
+  }
+
+  throw new Error('bad bencode');
+}
+
+// byte range of the top-level "info" dictionary
+function findInfoRange(b) {
+  if (b[0] !== 0x64) return null;
+  const dec = new TextDecoder();
+  let i = 1;
+
+  while (i < b.length && b[i] !== 0x65) {
+    const keyEnd = skipBencode(b, i, 0);
+    let j = i;
+    while (b[j] >= 0x30 && b[j] <= 0x39) j++;
+    const key = dec.decode(b.subarray(j + 1, keyEnd));
+    const valEnd = skipBencode(b, keyEnd, 0);
+    if (key === 'info') return [keyEnd, valEnd];
+    i = valEnd;
+  }
+  return null;
+}
+
+async function isTorrentFor(bytes, hash) {
+  try {
+    if (bytes.length < 40 || bytes.length > 8 * 1024 * 1024) return false;
+    const range = findInfoRange(bytes);
+    if (!range) return false;
+    const digest = await crypto.subtle.digest('SHA-1', bytes.subarray(range[0], range[1]));
+    const hex = [...new Uint8Array(digest)]
+      .map(x => x.toString(16).padStart(2, '0')).join('');
+    return hex === hash;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchTorrentBytes(hash, templates) {
+  const attempts = templates.map(async tpl => {
+    const u = tpl.replace(/\{HASH\}/g, hash.toUpperCase()).replace(/\{hash\}/g, hash);
+    const res = await fetch(u, {
+      headers: {
+        Accept: 'application/x-bittorrent, application/octet-stream, */*',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+          '(KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+      },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!(await isTorrentFor(bytes, hash))) throw new Error('not this torrent');
+    return bytes;
+  });
+
+  // first cache that returns a verified file wins
+  return Promise.any(attempts);
+}
+
+function safeFileName(value) {
+  const n = String(value || '')
+    .replace(/[^\w.\-()\[\] ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+  return n || 'torrent';
+}
+
+async function handleTorrentFile(env, cfg, url, cors) {
+  const hash = normalizeInfoHash(url.searchParams.get('hash'));
+  if (!hash) return json({ error: 'Invalid info hash' }, 400, cors);
+
+  const fileName = safeFileName(url.searchParams.get('name') || hash);
+
+  const headers = {
+    ...cors,
+    'Content-Type': 'application/x-bittorrent',
+    'Content-Disposition': 'attachment; filename="' + fileName + '.torrent"',
+    'Cache-Control': 'public, max-age=86400',
+  };
+
+  // Cloudflare edge cache (not available in every runtime)
+  const edge = typeof caches !== 'undefined' ? caches.default : null;
+  const cacheReq = new Request('https://torrent-file.cache/' + hash);
+
+  if (edge) {
+    try {
+      const hit = await edge.match(cacheReq);
+      if (hit) return new Response(await hit.arrayBuffer(), { status: 200, headers });
+    } catch {
+      // cache is optional
+    }
+  }
+
+  let bytes;
+  try {
+    bytes = await fetchTorrentBytes(hash, cfg.torrentCaches);
+  } catch {
+    return json({
+      error: 'No .torrent file is available for this release from the public caches. Use the magnet link instead.',
+    }, 404, cors);
+  }
+
+  if (edge) {
+    try {
+      await edge.put(cacheReq, new Response(bytes, {
+        headers: { 'Content-Type': 'application/x-bittorrent', 'Cache-Control': 'public, max-age=86400' },
+      }));
+    } catch {
+      // cache is optional
+    }
+  }
+
+  return new Response(bytes, { status: 200, headers });
+}
+
 async function handleTorrents(env, cfg, url, cors) {
   const q = (url.searchParams.get('q') || '').trim();
   const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
@@ -922,16 +1152,15 @@ async function handleTorrents(env, cfg, url, cors) {
     ? q + ' S' + pad2(season) + (episode ? 'E' + pad2(episode) : '')
     : q;
 
-  // How many matching results are enough before we stop asking more providers
-  const needed = episode ? 3 : (season ? 6 : Math.min(cfg.torrentMinResults, 5));
-
   if (!q) return json({ error: 'Missing query' }, 400, cors);
   if (q.length > 200) return json({ error: 'Query too long' }, 400, cors);
 
   const normTitle = normalizeTitle(q);
-  const key = 'torrents:v3:multi:' + kp + normTitle + ':' + year + (country ? ':' + country : '');
-  const cached = await cacheGet(env, key);
+  const suffix = ':' + year + (country ? ':' + country : '');
+  const key = 'torrents:v4:multi:' + kp + normTitle + suffix;
+  const backupKey = 'torrents:v4:backup:' + kp + normTitle + suffix;
 
+  const cached = await cacheGet(env, key);
   if (cached) return json(cached, 200, cors);
 
   const errors = [];
@@ -947,31 +1176,26 @@ async function handleTorrents(env, cfg, url, cors) {
     return true;
   };
 
-  const countWanted = () => merged.length;
+  // Ask every provider at the same time so ALL qualities are collected,
+  // but never wait longer than the deadline for a slow one.
+  const finished = [];
 
-  for (const providerName of cfg.torrentFallbacks) {
-    if (countWanted() >= needed) break;
-
+  const tasks = cfg.torrentFallbacks.map(async (providerName, idx) => {
     let adapter;
     try {
       adapter = getTorrentAdapter(providerName);
     } catch {
-      continue;
+      return;
     }
 
-    // Skip providers that are not configured (no error noise).
-    // YTS only carries movies.
-    if (type === 'tv' && providerName === 'yts') continue;
-
-    if (providerName === 'jackett' &&
-        !(cfg.jackettBase && cfg.jackettKey)) continue;
-
-    if (providerName === 'prowlarr' &&
-        !(cfg.prowlarrBase && cfg.prowlarrKey)) continue;
+    // YTS only carries movies; unconfigured providers are skipped quietly.
+    if (type === 'tv' && providerName === 'yts') return;
+    if (providerName === 'jackett' && !(cfg.jackettBase && cfg.jackettKey)) return;
+    if (providerName === 'prowlarr' && !(cfg.prowlarrBase && cfg.prowlarrKey)) return;
 
     if (await isCoolingDown(env, providerName)) {
       errors.push(providerName + ': cooling down after a recent failure');
-      continue;
+      return;
     }
 
     try {
@@ -987,37 +1211,30 @@ async function handleTorrents(env, cfg, url, cors) {
         )
       );
 
-      const raw = data && Array.isArray(data.torrents)
-        ? data.torrents
-        : [];
-
-      const items = raw.filter(relevant);
-
+      const raw = data && Array.isArray(data.torrents) ? data.torrents : [];
       if (raw.length) await clearCooldown(env, providerName);
 
-      if (items.length) {
-        merged.push(...items);
-        usedProviders.push(providerName);
-
-        await clearCooldown(env, providerName);
-
-        if (countWanted() >= needed) break;
-        continue;
-      }
-
-      if (!usedProviders.includes(providerName)) {
-        usedProviders.push(providerName);
-      }
-
-      errors.push(providerName + (raw.length
-        ? ': ' + raw.length + ' results, none matched this exact title'
-        : ': no results'));
+      finished.push({ idx, providerName, raw: raw.length, items: raw.filter(relevant) });
     } catch (e) {
       errors.push(providerName + ': ' + (e.message || 'failed'));
     }
-  }
+  });
 
-  const backupKey = 'torrents:v3:backup:' + kp + normTitle + ':' + year + (country ? ':' + country : '');
+  await Promise.race([Promise.allSettled(tasks), sleep(cfg.torrentDeadlineMs)]);
+
+  const results = finished.slice().sort((a, b) => a.idx - b.idx);
+
+  for (const r of results) {
+    usedProviders.push(r.providerName);
+
+    if (r.items.length) {
+      merged.push(...r.items);
+    } else {
+      errors.push(r.providerName + (r.raw
+        ? ': ' + r.raw + ' results, none matched this exact title'
+        : ': no results'));
+    }
+  }
 
   if (!merged.length) {
     const backup = await getBackup(env, backupKey);
@@ -1060,18 +1277,27 @@ async function handleTorrents(env, cfg, url, cors) {
 
     if (seen.has(uniqueKey)) return false;
     seen.add(uniqueKey);
-
-    return relevant(t);
+    return true;
   });
 
-  torrents.sort((a, b) =>
-    qualityRank(b.resolution) - qualityRank(a.resolution) ||
-    ((b.seeds || 0) - (a.seeds || 0))
-  );
+  for (const t of torrents) {
+    // quality label + rank (lowest -> highest)
+    const qd = detectQuality(t.title, t.resolution || t.quality, q);
+    t.qLabel = qd.label;
+    t.qRank = qd.rank;
+    t.qKey = qd.key;
 
-  // Tell the page which season / episode each release is
-  if (type === 'tv') {
-    for (const t of torrents) {
+    // make sure the page can ask for a .torrent file by info-hash
+    if (!t.infoHash) {
+      const m = /btih:([a-z0-9]{40}|[a-z0-9]{32})/i.exec(t.magnet || '');
+      if (m) t.infoHash = m[1].toLowerCase();
+    }
+
+    // never send links that carry a Jackett/Prowlarr API key to the browser
+    if (t.torrentUrl && /api[_-]?key/i.test(t.torrentUrl)) t.torrentUrl = null;
+
+    // Tell the page which season / episode each release is
+    if (type === 'tv') {
       const info = parseEpisodeInfo(t.title);
       t.season = info.season;
       t.episode = info.episode;
@@ -1079,18 +1305,10 @@ async function handleTorrents(env, cfg, url, cors) {
     }
   }
 
-  if (!torrents.length) {
-    const backup = await getBackup(env, backupKey);
-
-    if (backup) {
-      return json({
-        ...backup,
-        stale: true,
-        providerError:
-          'Current results were unusable after filtering; showing saved backup.',
-      }, 200, cors);
-    }
-  }
+  // lowest quality first, best-seeded first inside each quality
+  torrents.sort((a, b) =>
+    (a.qRank - b.qRank) || ((b.seeds || 0) - (a.seeds || 0))
+  );
 
   const payload = {
     query: q,
@@ -1102,30 +1320,17 @@ async function handleTorrents(env, cfg, url, cors) {
     provider: usedProviders.join('+') || cfg.torrentProvider,
   };
 
-  if (!torrents.length && errors.length) {
-    payload.providerError =
-      'Torrent index temporarily unavailable (' + errors.join(' | ') + ')';
-  }
+  const backupPayload = {
+    query: q,
+    year,
+    torrents,
+    totalResults: torrents.length,
+    provider: payload.provider,
+    savedAt: new Date().toISOString(),
+  };
 
-  if (torrents.length) {
-    const backupPayload = {
-      query: q,
-      year,
-      torrents,
-      totalResults: torrents.length,
-      provider: payload.provider,
-      savedAt: new Date().toISOString(),
-    };
-
-    await cachePut(env, backupKey, backupPayload, cfg.torrentBackupTtl);
-  }
-
-  await cachePut(
-    env,
-    key,
-    payload,
-    payload.providerError ? 120 : cfg.torrentTtl
-  );
+  await cachePut(env, backupKey, backupPayload, cfg.torrentBackupTtl);
+  await cachePut(env, key, payload, cfg.torrentTtl);
 
   return json(payload, 200, cors);
 }
