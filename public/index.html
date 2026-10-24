@@ -20,26 +20,136 @@
 .qChips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}.qChip{padding:8px 11px;border-radius:999px;border:1px solid #344158;background:#151e2e;color:#d6d9e2;font-size:12px;font-weight:bold;cursor:pointer}.qChip small{opacity:.7;font-weight:normal;margin-left:3px}.qChip:hover{border-color:#a17c36}.qChip.active{background:var(--gold);color:#17130a;border-color:var(--gold)}
 .qGroup{margin-bottom:14px}.qHead{display:flex;align-items:baseline;gap:8px;margin:14px 0 4px;color:#f5d88f;font-size:15px}.qHead small{color:var(--muted);font-weight:normal;font-size:11px}.qBadge{font-weight:bold}
 .mini.fileDl{background:linear-gradient(110deg,#1d4ed8,#3b82f6);color:#fff}.tMsg{flex:1 1 100%;color:#fca5a5;font-size:11px;line-height:1.5}.noQ{color:var(--muted);font-size:12px;padding:4px 0}.tBtns{flex-wrap:wrap}.tBtns .mini{flex:1 1 auto}
-@media(max-width:600px){main{padding:10px 7px}.movies{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{font-size:13px;padding:10px 3px}.typeBadge{top:4px;left:4px;font-size:8px;padding:1px 4px}.card{border-radius:7px}.info{padding:5px}.info h3{font-size:clamp(10px,3vw,13px);line-height:1.25;margin:1px 0 5px}.info p{font-size:clamp(9px,2.5vw,11px);line-height:1.3;margin:4px 0}.info .overview{display:none}.btn{font-size:clamp(9px,2.5vw,11px);padding:8px 3px;margin-top:5px;border-radius:5px}.sectionTitle{margin:15px 0 9px}.search{font-size:14px;padding:12px}header{padding:17px 8px}.brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}.tags{gap:5px}.tags span{font-size:9px;padding:4px 6px}.detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}.btn.torrentBtn{font-size:16px;padding:15px 10px}.seasonBtn{flex:1 1 calc(33.33% - 8px);min-width:0;font-size:13px}.tBtns{width:100%}.tBtns .mini{flex:1}}
+.i3d{width:1.3em;height:1.3em;vertical-align:-.3em;flex:none;margin-right:.3em;filter:drop-shadow(0 2px 2px #0009)}
+.sectionTitle .i3d{width:1.4em;height:1.4em;vertical-align:-.35em}.tags .i3d{width:15px;height:15px;vertical-align:-3px;margin-right:4px}
+.poster .i3d{width:46%;height:auto;aspect-ratio:1;margin:0;filter:drop-shadow(0 6px 6px #000b)}
+.mode{display:flex;align-items:center;justify-content:center;gap:6px}.mode .i3d{width:22px;height:22px;margin:0}
+.searchBar{display:flex;gap:8px;margin:10px 0 12px}.searchBar .search{flex:1;min-width:0;margin:0}
+.searchBtn{display:flex;align-items:center;justify-content:center;gap:8px;padding:0 18px;border:0;border-radius:10px;background:linear-gradient(110deg,#f1c45e,#fff0b8);color:#1a160b;font-size:15px;font-weight:bold;cursor:pointer;box-shadow:0 3px 12px #f3c76644;transition:filter .15s,transform .1s}.searchBtn:hover{filter:brightness(1.06)}.searchBtn:active{transform:scale(.96)}.searchBtn .i3d{width:26px;height:26px;margin:0}
+.spinner.sp{width:14px;height:14px;border-width:2px;margin-right:6px}
+.btn.torrentBtn .i3d{width:26px;height:26px;margin:0}
+@media(max-width:600px){main{padding:10px 7px}.movies{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mode{font-size:13px;padding:10px 3px}.typeBadge{top:4px;left:4px;font-size:8px;padding:1px 4px}.card{border-radius:7px}.info{padding:5px}.info h3{font-size:clamp(10px,3vw,13px);line-height:1.25;margin:1px 0 5px}.info p{font-size:clamp(9px,2.5vw,11px);line-height:1.3;margin:4px 0}.info .overview{display:none}.btn{font-size:clamp(9px,2.5vw,11px);padding:8px 3px;margin-top:5px;border-radius:5px}.sectionTitle{margin:15px 0 9px}.search{font-size:14px;padding:12px}header{padding:17px 8px}.brand{font-size:clamp(31px,8.3vw,48px);letter-spacing:-1.5px}.tags{gap:5px}.tags span{font-size:9px;padding:4px 6px}.detailContent,.torrentContent,.playerContent{margin:12px auto;padding:12px}.btn.torrentBtn{font-size:16px;padding:15px 10px}.searchBtn{padding:0 14px}@media(max-width:380px){.searchBtn span{display:none}}.seasonBtn{flex:1 1 calc(33.33% - 8px);min-width:0;font-size:13px}.tBtns{width:100%}.tBtns .mini{flex:1}}
 #intro{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;overflow:hidden;background:radial-gradient(ellipse at center,#222019 0%,#090d16 55%,#020308 100%);animation:introExit .7s ease 3.7s forwards}.intro-glow{position:absolute;width:75vw;height:75vw;max-width:600px;max-height:600px;border-radius:50%;background:#f3c76612;filter:blur(60px);animation:pulse 2s ease-in-out infinite alternate}.intro-brand{position:relative;z-index:1;font-size:clamp(35px,9vw,78px);letter-spacing:-2px;line-height:1.25}.intro-line{height:2px;width:min(280px,65vw);margin:18px auto;background:linear-gradient(90deg,transparent,#f3c766,transparent)}.intro-caption,.intro-sub{position:relative;z-index:1;color:#f5d88f;font-size:clamp(10px,2.7vw,13px);letter-spacing:3px}.intro-sub{margin-top:15px;color:#b8c0d0;font-size:11px;letter-spacing:2px}@keyframes introExit{to{opacity:0;visibility:hidden}}@keyframes pulse{from{transform:scale(.8);opacity:.5}to{transform:scale(1.15);opacity:1}}@media(prefers-reduced-motion:reduce){.brand,.intro-brand,.epItem.packItem,.epNo.packNo,.packNo svg,.epName.packName{animation:none!important}}
 </style></head>
-<body class="lock"><div id="intro"><div class="intro-glow"></div><div class="intro-brand">CineX Zone</div><div class="intro-line"></div><div class="intro-caption">WATCH · TORRENT · DOWNLOAD</div><div class="intro-sub">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div></div>
-<header><div class="brand">CineX Zone</div><p>Discover movies &amp; TV series. Explore trailers. Find authorized watch &amp; download sources.</p><div class="tags"><span>🎬 MOVIES</span><span>📺 TV SERIES</span><span>▶ TRAILERS</span><span>⬇ WATCH &amp; DOWNLOAD</span></div></header>
-<main><input id="search" class="search" placeholder="🔍 Search movies..." aria-label="Search movies">
-<div class="modes" role="group" aria-label="Show"><button type="button" class="mode active" data-mode="all" aria-pressed="true">All</button><button type="button" class="mode" data-mode="movie" aria-pressed="false">🎬 Movies</button><button type="button" class="mode" data-mode="tv" aria-pressed="false">📺 TV Series</button></div>
-<div id="searchSection" style="display:none"><h2 class="sectionTitle" id="searchTitle">🔍 Search Results · All</h2><div id="movieGrid" class="movies"></div><div id="status" class="status"></div><nav id="pagination" class="pagination"></nav></div>
-<div id="latestSection"><h2 class="sectionTitle" id="latestTitle">🆕 Latest Movies &amp; TV Series</h2><div id="latestGrid" class="movies"></div><div id="latestStatus" class="status"><span class="spinner"></span>Loading…</div><nav id="latestPagination" class="pagination"></nav></div>
+<body class="lock">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<linearGradient id="g3Gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0b3"/><stop offset=".42" stop-color="#ffc83d"/><stop offset="1" stop-color="#d97f00"/></linearGradient>
+<linearGradient id="g3Orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc27a"/><stop offset=".5" stop-color="#ff7a12"/><stop offset="1" stop-color="#c24300"/></linearGradient>
+<linearGradient id="g3Dark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6c7ca6"/><stop offset=".45" stop-color="#2d3759"/><stop offset="1" stop-color="#121830"/></linearGradient>
+<linearGradient id="g3Screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b6f3ff"/><stop offset=".5" stop-color="#3f9dff"/><stop offset="1" stop-color="#2a45d6"/></linearGradient>
+<linearGradient id="g3Red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9d9d"/><stop offset=".5" stop-color="#ee3b3b"/><stop offset="1" stop-color="#a81212"/></linearGradient>
+<linearGradient id="g3Green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9af7b8"/><stop offset=".5" stop-color="#22c55e"/><stop offset="1" stop-color="#0d7f38"/></linearGradient>
+<linearGradient id="g3Blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a5d2ff"/><stop offset=".5" stop-color="#3b82f6"/><stop offset="1" stop-color="#1b43bd"/></linearGradient>
+<linearGradient id="g3Paper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfd9ee"/></linearGradient>
+<linearGradient id="g3Glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f1fdff" stop-opacity=".95"/><stop offset="1" stop-color="#7cc8ff" stop-opacity=".55"/></linearGradient>
+<radialGradient id="g3Shine" cx=".3" cy=".22" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<clipPath id="c3Clap"><rect x="7" y="9" width="50" height="14" rx="4"/></clipPath>
+<clipPath id="c3Screen"><rect x="11" y="21" width="35" height="28" rx="5.5"/></clipPath>
+</defs>
+
+<symbol id="i-movie" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="59" rx="21" ry="3" fill="#000" opacity=".3"/>
+  <rect x="7" y="25" width="50" height="32" rx="6" fill="url(#g3Dark)"/>
+  <rect x="7" y="25" width="50" height="32" rx="6" fill="none" stroke="#b9c6ea" stroke-opacity=".55" stroke-width="1.3"/>
+  <rect x="8.5" y="26.5" width="47" height="11" rx="4.5" fill="url(#g3Shine)" opacity=".5"/>
+  <polygon points="26.5,33 26.5,51 43,42" fill="url(#g3Gold)" stroke="#a65f00" stroke-width="1" stroke-linejoin="round"/>
+  <polygon points="28.5,36 28.5,41 34,38.4" fill="#fff" opacity=".6"/>
+  <g transform="rotate(-10 9 25)">
+    <g clip-path="url(#c3Clap)">
+      <rect x="7" y="9" width="50" height="14" fill="#161c33"/>
+      <path d="M7 9h8l-5 14H2zM23 9h8l-5 14h-8zM39 9h8l-5 14h-8zM55 9h8l-5 14h-8z" fill="url(#g3Orange)"/>
+      <path d="M15 9h8l-5 14h-8zM31 9h8l-5 14h-8zM47 9h8l-5 14h-8z" fill="#fff4dc"/>
+      <rect x="7" y="9" width="50" height="6" fill="#fff" opacity=".28"/>
+    </g>
+    <rect x="7" y="9" width="50" height="14" rx="4" fill="none" stroke="#7a3a00" stroke-opacity=".55" stroke-width="1.2"/>
+  </g>
+  <circle cx="10" cy="25" r="2.6" fill="url(#g3Gold)" stroke="#8a5200" stroke-width=".8"/>
+</symbol>
+
+<symbol id="i-tv" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="60" rx="19" ry="2.8" fill="#000" opacity=".3"/>
+  <path d="M22.5 7.5L32 17.5M41.5 7.5L32 17.5" stroke="#6b4a00" stroke-width="4.6" stroke-linecap="round" fill="none" opacity=".45"/>
+  <path d="M22 6.5L32 17M42 6.5L32 17" stroke="url(#g3Gold)" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <circle cx="22" cy="6.5" r="2.7" fill="url(#g3Gold)" stroke="#8a5200" stroke-width=".8"/>
+  <circle cx="42" cy="6.5" r="2.7" fill="url(#g3Gold)" stroke="#8a5200" stroke-width=".8"/>
+  <rect x="14" y="52" width="9" height="5.5" rx="2.5" fill="#121830"/>
+  <rect x="41" y="52" width="9" height="5.5" rx="2.5" fill="#121830"/>
+  <rect x="5" y="15" width="54" height="39" rx="10" fill="url(#g3Dark)"/>
+  <rect x="5" y="15" width="54" height="39" rx="10" fill="none" stroke="#b9c6ea" stroke-opacity=".6" stroke-width="1.3"/>
+  <rect x="6.5" y="16.5" width="51" height="12" rx="8" fill="url(#g3Shine)" opacity=".45"/>
+  <rect x="10.5" y="20.5" width="36" height="29" rx="6" fill="#0b1226"/>
+  <rect x="11.5" y="21.5" width="34" height="27" rx="5.2" fill="url(#g3Screen)"/>
+  <g clip-path="url(#c3Screen)"><path d="M11 21h24L21 49H11z" fill="#fff" opacity=".26"/></g>
+  <circle cx="52" cy="27" r="3" fill="url(#g3Gold)" stroke="#8a5200" stroke-width=".8"/>
+  <circle cx="52" cy="36.5" r="3" fill="url(#g3Gold)" stroke="#8a5200" stroke-width=".8"/>
+  <path d="M50 44.5h4M50 47h4" stroke="#0b1226" stroke-width="1.4" stroke-linecap="round" opacity=".7"/>
+</symbol>
+
+<symbol id="i-search" viewBox="0 0 64 64">
+  <ellipse cx="31" cy="60" rx="18" ry="2.8" fill="#000" opacity=".28"/>
+  <path d="M43.5 43.5L57 57" stroke="#121830" stroke-width="10.5" stroke-linecap="round"/>
+  <path d="M43.5 43.5L57 57" stroke="url(#g3Dark)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M45 42.5L55 52.5" stroke="#fff" stroke-opacity=".3" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="26.5" cy="26.5" r="21" fill="url(#g3Gold)" stroke="#a65f00" stroke-width="1.3"/>
+  <circle cx="26.5" cy="26.5" r="14.5" fill="#7a4a00" opacity=".35"/>
+  <circle cx="26.5" cy="26.5" r="13.5" fill="url(#g3Glass)"/>
+  <path d="M17.5 21.5a11 11 0 0 1 9.5-6.5" stroke="#fff" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+  <ellipse cx="18" cy="14" rx="9" ry="4.5" transform="rotate(-35 18 14)" fill="url(#g3Shine)"/>
+</symbol>
+
+<symbol id="i-new" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="60" rx="18" ry="2.8" fill="#000" opacity=".28"/>
+  <polygon points="32,3.5 40,22.5 60.5,24.5 45,38 49.5,58 32,47.5 14.5,58 19,38 3.5,24.5 24,22.5" fill="url(#g3Gold)" stroke="#a65f00" stroke-width="1.6" stroke-linejoin="round"/>
+  <polygon points="32,9 38,23.5 53,25.2 41.5,35 43.4,47 32,40.5" fill="#d97f00" opacity=".22"/>
+  <polygon points="32,9.5 37,22 24.5,23.5 20,32 18,26" fill="#fff" opacity=".6"/>
+  <circle cx="50" cy="10" r="3" fill="#fff" opacity=".9"/><circle cx="12" cy="12" r="2" fill="#fff" opacity=".8"/>
+</symbol>
+
+<symbol id="i-play" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="60" rx="19" ry="2.8" fill="#000" opacity=".3"/>
+  <circle cx="32" cy="31" r="27" fill="url(#g3Red)" stroke="#7a0f0f" stroke-width="1.4"/>
+  <ellipse cx="32" cy="16" rx="19" ry="11" fill="url(#g3Shine)" opacity=".85"/>
+  <polygon points="25,19 25,43 46,31" fill="#fff" stroke="#f3c2c2" stroke-width="1" stroke-linejoin="round"/>
+</symbol>
+
+<symbol id="i-download" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="60" rx="20" ry="2.8" fill="#000" opacity=".3"/>
+  <rect x="5" y="5" width="54" height="52" rx="14" fill="url(#g3Green)" stroke="#075a26" stroke-width="1.4"/>
+  <rect x="7" y="7" width="50" height="22" rx="11" fill="url(#g3Shine)" opacity=".7"/>
+  <path d="M32 14v21" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <path d="M20.5 28.5L32 40l11.5-11.5" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M17 47.5h30" stroke="#fff" stroke-width="5.5" stroke-linecap="round"/>
+</symbol>
+
+<symbol id="i-file" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="60" rx="18" ry="2.8" fill="#000" opacity=".3"/>
+  <path d="M15 4h25l15 15v36a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5V9a5 5 0 0 1 5-5z" fill="url(#g3Paper)" stroke="#8fa3cf" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M40 4l15 15H44a4 4 0 0 1-4-4z" fill="#aebfe3" stroke="#8fa3cf" stroke-width="1.2" stroke-linejoin="round"/>
+  <rect x="21" y="25" width="22" height="26" rx="6" fill="url(#g3Blue)" stroke="#173a9e" stroke-width="1"/>
+  <path d="M32 29v11" stroke="#fff" stroke-width="4.4" stroke-linecap="round"/>
+  <path d="M26 36l6 6 6-6" stroke="#fff" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M26.5 47.5h11" stroke="#fff" stroke-width="3.4" stroke-linecap="round"/>
+</symbol>
+</svg>
+<div id="intro"><div class="intro-glow"></div><div class="intro-brand">CineX Zone</div><div class="intro-line"></div><div class="intro-caption">WATCH · TORRENT · DOWNLOAD</div><div class="intro-sub">MOVIES · TRAILERS · CINEMATIC EXPERIENCE</div></div>
+<header><div class="brand">CineX Zone</div><p>Discover movies &amp; TV series. Explore trailers. Find authorized watch &amp; download sources.</p><div class="tags"><span><svg class="i3d" aria-hidden="true"><use href="#i-movie"/></svg>MOVIES</span><span><svg class="i3d" aria-hidden="true"><use href="#i-tv"/></svg>TV SERIES</span><span><svg class="i3d" aria-hidden="true"><use href="#i-play"/></svg>TRAILERS</span><span><svg class="i3d" aria-hidden="true"><use href="#i-download"/></svg>WATCH &amp; DOWNLOAD</span></div></header>
+<main><form id="searchForm" class="searchBar" role="search" autocomplete="off"><input id="search" class="search" type="search" enterkeyhint="search" placeholder="Search movies &amp; TV series…" aria-label="Search movies and TV series"><button type="submit" id="searchBtn" class="searchBtn" aria-label="Search"><svg class="i3d" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span></button></form>
+<div class="modes" role="group" aria-label="Show"><button type="button" class="mode active" data-mode="all" aria-pressed="true">All</button><button type="button" class="mode" data-mode="movie" aria-pressed="false"><svg class="i3d" aria-hidden="true"><use href="#i-movie"/></svg>Movies</button><button type="button" class="mode" data-mode="tv" aria-pressed="false"><svg class="i3d" aria-hidden="true"><use href="#i-tv"/></svg>TV Series</button></div>
+<div id="searchSection" style="display:none"><h2 class="sectionTitle" id="searchTitle"><svg class="i3d" aria-hidden="true"><use href="#i-search"/></svg>Search Results · All</h2><div id="movieGrid" class="movies"></div><div id="status" class="status"></div><nav id="pagination" class="pagination"></nav></div>
+<div id="latestSection"><h2 class="sectionTitle" id="latestTitle"><svg class="i3d" aria-hidden="true"><use href="#i-new"/></svg>Latest Movies &amp; TV Series</h2><div id="latestGrid" class="movies"></div><div id="latestStatus" class="status"><span class="spinner"></span>Loading…</div><nav id="latestPagination" class="pagination"></nav></div>
 <p class="note">CineX Zone is an independent movie discovery catalog. Full-film playback and downloads depend on each provider. Use official or otherwise authorized sources and check the licence before downloading or sharing. <span class="src" id="tmdbAttribution" style="display:none">This product uses the TMDB API but is not endorsed or certified by TMDB.</span></p></main>
-<div id="detailBox"><div class="detailContent"><button class="close" onclick="closeDetail()">✕ Close</button><h3 id="detailTitle" style="margin:0 40px 12px 0"></h3><div id="detailBody"></div><button class="btn torrentBtn" id="detailTorrentsBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6.5v8.5M8 11.5l4 4 4-4M7.5 18h9"/></svg><span>Download Torrent</span></button></div></div>
+<div id="detailBox"><div class="detailContent"><button class="close" onclick="closeDetail()">✕ Close</button><h3 id="detailTitle" style="margin:0 40px 12px 0"></h3><div id="detailBody"></div><button class="btn torrentBtn" id="detailTorrentsBtn" type="button"><svg class="i3d" aria-hidden="true"><use href="#i-download"/></svg><span>Download Torrent</span></button></div></div>
 <div id="torrentBox"><div class="torrentContent"><button class="close" onclick="closeTorrents()">✕ Close</button><h3 id="torrentTitle">Other Sources</h3><p class="note">Only use sources for content you have permission to download or share.</p><div id="torrentList"></div></div></div>
 <div id="playerBox"><div class="playerContent"><button class="close" onclick="closeMovie()">✕ Close</button><h3 id="playerTitle">CineX Zone Player</h3><div id="trailerWrap" class="videoWrap"><iframe id="trailerFrame" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><video id="moviePlayer" controls playsinline preload="metadata" style="display:none">Your browser does not support video playback.</video><a id="trailerYt" class="btn download" href="#" target="_blank" rel="noopener noreferrer">If the video does not load, open it on YouTube</a></div></div><footer>© CineX Zone · Movie Discovery, Trailers &amp; Authorized Sources</footer>
 <script>
 const $=id=>document.getElementById(id);
+const ico=(n,c)=>'<svg class="i3d'+(c?' '+c:'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>';
 const grid=$('movieGrid'),statusEl=$('status'),pagEl=$('pagination');
 const PLACEHOLDER='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="100%" height="100%" fill="#1a2336"/><text x="50%" y="50%" fill="#f5d88f" font-size="22" text-anchor="middle" dominant-baseline="middle">POSTER</text></svg>');
 const GENRE_MAP={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Science Fiction',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western',10759:'Action & Adventure',10762:'Kids',10763:'News',10764:'Reality',10765:'Sci-Fi & Fantasy',10766:'Soap',10767:'Talk',10768:'War & Politics'};
-const LATEST_TITLES={all:'🆕 Latest Movies & TV Series',movie:'🎬 Latest Movies',tv:'📺 Latest TV Series'};
-const SEARCH_TITLES={all:'🔍 Search Results · All',movie:'🔍 Search Results · Movies',tv:'🔍 Search Results · TV Series'};
+const LATEST_TITLES={all:ico('new')+'Latest Movies &amp; TV Series',movie:ico('movie')+'Latest Movies',tv:ico('tv')+'Latest TV Series'};
+const SEARCH_TITLES={all:ico('search')+'Search Results · All',movie:ico('search')+'Search Results · Movies',tv:ico('search')+'Search Results · TV Series'};
+const PLACEHOLDERS={all:'Search movies & TV series…',movie:'Search movies…',tv:'Search TV series…'};
 
 // mode: 'all' (default) | 'movie' | 'tv'
 let mode='all',debounceTimer=null,currentQuery='',currentPage=1,totalPages=1,searchReq=0,
@@ -67,8 +177,9 @@ function setMode(m){
   if(m===mode)return;
   mode=m;
   document.querySelectorAll('.mode').forEach(b=>{const on=b.dataset.mode===m;b.classList.toggle('active',on);b.setAttribute('aria-pressed',on?'true':'false')});
-  $('latestTitle').textContent=LATEST_TITLES[m];
-  $('searchTitle').textContent=SEARCH_TITLES[m];
+  $('latestTitle').innerHTML=LATEST_TITLES[m];
+  $('searchTitle').innerHTML=SEARCH_TITLES[m];
+  $('search').placeholder=PLACEHOLDERS[m];
   homePage=1;loadHome();
   if(currentQuery){currentPage=1;loadMovies()}
 }
@@ -97,14 +208,18 @@ async function loadHome(){
 }
 
 // ---------- Search (follows the selected mode) ----------
-$('search').addEventListener('input',function(){
+function doSearch(scroll){
   clearTimeout(debounceTimer);
-  debounceTimer=setTimeout(()=>{
-    currentQuery=$('search').value.trim();currentPage=1;
-    if(currentQuery){$('searchSection').style.display='block';loadMovies()}
-    else{searchReq++;$('searchSection').style.display='none';grid.innerHTML='';statusEl.textContent='';pagEl.innerHTML=''}
-  },450);
-});
+  currentQuery=$('search').value.trim();currentPage=1;
+  if(currentQuery){
+    $('searchSection').style.display='block';loadMovies();
+    if(scroll){$('searchSection').scrollIntoView({behavior:'smooth',block:'start'});$('search').blur()}
+  }else{searchReq++;$('searchSection').style.display='none';grid.innerHTML='';statusEl.textContent='';pagEl.innerHTML=''}
+}
+// search button + Enter key: search right now
+$('searchForm').addEventListener('submit',ev=>{ev.preventDefault();doSearch(true)});
+// typing also searches after a short pause
+$('search').addEventListener('input',()=>{clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>doSearch(false),450)});
 async function loadMovies(){
   const req=++searchReq;
   statusEl.className='status';statusEl.innerHTML='<span class="spinner"></span>Searching…';grid.innerHTML='';pagEl.innerHTML='';
@@ -126,7 +241,7 @@ async function loadMovies(){
 function movieCard(m){
   const isTv=m.type==='tv';
   const card=document.createElement('article');card.className='card';
-  const poster=m.poster?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">':'<div class="poster">'+(isTv?'📺':'🎬')+'</div>';
+  const poster=m.poster?'<img loading="lazy" src="'+esc(m.poster)+'" alt="'+esc(m.title)+'" onerror="this.onerror=null;this.src=\''+PLACEHOLDER+'\'">':'<div class="poster">'+ico(isTv?'tv':'movie')+'</div>';
   const genres=genreNames(m);
   card.innerHTML=(mode==='all'?'<span class="typeBadge">'+(isTv?'TV':'MOVIE')+'</span>':'')+poster+'<div class="info"><h3>'+esc(m.title)+'</h3><p>'+esc(m.year||'')+(genres.length?' · '+esc(genres.slice(0,2).join(', ')):'')+'</p>'+(m.rating?'<p class="rating">★ '+Number(m.rating).toFixed(1)+'</p>':'')+(m.overview?'<p class="overview">'+esc(m.overview)+'</p>':'')+'</div>';
   card.tabIndex=0;card.setAttribute('role','button');card.setAttribute('aria-label',m.title);
@@ -146,7 +261,7 @@ async function openDetail(m){
   const genres=genreNames(m);
   h+='<p><span class="badge">'+(isTv?'TV SERIES':'MOVIE')+'</span> '+esc(genres.join(', '))+(genres.length&&m.year?' · ':'')+esc(m.year||'')+(m.rating?' · ★ '+Number(m.rating).toFixed(1):'')+'</p>';
   if(m.overview)h+='<p>'+esc(m.overview)+'</p>';
-  if(m.trailerUrl)h+='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Trailer</button>';
+  if(m.trailerUrl)h+='<button class="btn watch" type="button" onclick="playTrailer()">'+ico('play')+'Watch Trailer</button>';
   if(m.storeUrl&&safeUrl(m.storeUrl))h+='<a class="btn download" href="'+esc(safeUrl(m.storeUrl))+'" target="_blank" rel="noopener noreferrer">ⓘ View Official Source</a>';
   h+='<div id="trailerSlot"></div><div style="clear:both"></div>';
   body.innerHTML=h;
@@ -154,7 +269,7 @@ async function openDetail(m){
   if(m.source==='TMDB'&&/^\d+$/.test(m.id||'')){
     try{
       const t=await withTimeout(api('/api/trailer',{id:m.id,type:isTv?'tv':'movie'}),8000);
-      if(t.trailerUrl&&currentMovie===m){currentMovie.trailerUrl=t.trailerUrl;const slot=$('trailerSlot');if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">▶ Watch Official Trailer</button>'}
+      if(t.trailerUrl&&currentMovie===m){currentMovie.trailerUrl=t.trailerUrl;const slot=$('trailerSlot');if(slot)slot.innerHTML='<button class="btn watch" type="button" onclick="playTrailer()">'+ico('play')+'Watch Official Trailer</button>'}
     }catch(e){}
   }
 }
@@ -214,15 +329,16 @@ async function openTorrents(m){
 }
 
 // ---------- one row = one release (size, seeds, 3 ways to get it) ----------
+const FILE_BTN=ico('file')+'Download file';
 function torrentRowHtml(t,flat){
   const dl=safeUrl(t.torrentUrl),mag=safeUrl(t.magnet),h=String(t.infoHash||'').trim();
   const direct=dl&&!/^magnet:/i.test(dl)?dl:'';
   const canFile=isHash(h)||!!direct;
   return '<div class="tRow" data-q="'+qRankOf(t)+'"><div class="tInfo"><span class="badge qBadge">'+esc(t.qLabel||t.resolution||'?')+'</span> <b>'+esc(t.size||'size n/a')+'</b> · ↑ '+(t.seeds??0)+' ↓ '+(t.peers??0)+(t.source?' · '+esc(t.source):'')+'<div class="tName">'+esc(t.title)+'</div></div>'
     +'<div class="tBtns">'
-    +(mag?'<a class="mini mag" href="'+esc(mag)+'" rel="noopener noreferrer">'+(flat?'Open magnet link':'⬇ Download')+'</a>':'')
+    +(mag?'<a class="mini mag" href="'+esc(mag)+'" rel="noopener noreferrer">'+(flat?'Open magnet link':ico('download')+'Download')+'</a>':'')
     +(flat&&direct?'<a class="mini file" href="'+esc(direct)+'" target="_blank" rel="noopener noreferrer">Open source file</a>':'')
-    +(canFile?'<button type="button" class="mini fileDl" data-tfile="'+esc(h)+'" data-tname="'+esc(t.title)+'" data-turl="'+esc(direct)+'">📄 Download file</button>':'')
+    +(canFile?'<button type="button" class="mini fileDl" data-tfile="'+esc(h)+'" data-tname="'+esc(t.title)+'" data-turl="'+esc(direct)+'">'+FILE_BTN+'</button>':'')
     +'</div><div class="tMsg" hidden></div></div>';
 }
 
@@ -234,8 +350,8 @@ function saveBlob(blob,filename){
 }
 async function downloadTorrentFile(btn){
   const h=btn.dataset.tfile||'',name=btn.dataset.tname||'torrent',direct=btn.dataset.turl||'';
-  const msg=btn.closest('.tRow').querySelector('.tMsg'),label='📄 Download file';
-  btn.disabled=true;btn.textContent='⏳ Getting file…';msg.hidden=true;
+  const msg=btn.closest('.tRow').querySelector('.tMsg');
+  btn.disabled=true;btn.innerHTML='<span class="spinner sp"></span>Getting file…';msg.hidden=true;
   try{
     if(!isHash(h))throw new Error('no hash');
     const res=await withTimeout(fetch('/api/torrent-file?'+new URLSearchParams({hash:h,name})),25000);
@@ -244,9 +360,9 @@ async function downloadTorrentFile(btn){
     if(!blob.size)throw new Error('empty');
     saveBlob(new Blob([blob],{type:'application/x-bittorrent'}),(name.replace(/[^\w.\-()\[\] ]+/g,' ').replace(/\s+/g,' ').trim().slice(0,100)||'torrent')+'.torrent');
     btn.textContent='✓ Saved';
-    setTimeout(()=>{btn.textContent=label},3000);
+    setTimeout(()=>{btn.innerHTML=FILE_BTN},3000);
   }catch(e){
-    btn.textContent=label;
+    btn.innerHTML=FILE_BTN;
     if(direct){window.open(direct,'_blank','noopener');msg.textContent='Opening the source .torrent file directly…';}
     else msg.textContent='No .torrent file is available for this release from the public caches. Use the magnet link instead.';
     msg.hidden=false;
@@ -329,7 +445,7 @@ function renderSeasonPicker(m,seasons){
   list.innerHTML='<p class="note">Choose a season to see every episode with its date, size and download links.</p>'
     +'<div class="seasonBtns">'+seasons.map(s=>'<button type="button" class="seasonBtn" data-s="'+s.season+'">Season '+s.season+'<small>'+s.episodes+' episode'+(s.episodes===1?'':'s')+(s.year?' · '+esc(s.year):'')+'</small></button>').join('')+'</div>'
     +'<div id="seasonView" data-qscope="1"></div>'
-    +'<button type="button" class="btn download" id="generalBtn">🔎 General search (full-series packs)</button>';
+    +'<button type="button" class="btn download" id="generalBtn">'+ico('search')+'General search (full-series packs)</button>';
   list.querySelectorAll('.seasonBtn').forEach(b=>b.onclick=()=>loadSeason(m,Number(b.dataset.s)));
   $('generalBtn').onclick=()=>{
     seasonToken++;seasonState=null;
@@ -359,7 +475,7 @@ function refreshSeasonChips(st){
 function fillEpisode(st,epNo){
   const body=$('ep-'+epNo);if(!body)return;
   const ts=st.byEp[epNo]||[];
-  body.innerHTML=ts.length?'<div class="noQ" hidden>No release in the selected quality.</div>'+rowsHtml(ts):'<div class="missing">No torrent found yet.</div><button type="button" class="mini file" data-find="'+epNo+'">🔍 Search this episode</button>';
+  body.innerHTML=ts.length?'<div class="noQ" hidden>No release in the selected quality.</div>'+rowsHtml(ts):'<div class="missing">No torrent found yet.</div><button type="button" class="mini file" data-find="'+epNo+'">'+ico('search')+'Search this episode</button>';
   refreshSeasonChips(st);
 }
 async function loadSeason(m,n){
@@ -391,7 +507,7 @@ async function loadSeason(m,n){
   if(st.packs.length)$('packsBox').innerHTML='<div class="epItem packItem"><div class="epHead"><span class="epNo packNo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3.3 7.5L12 12.5l8.7-5M12 22V12.5"/></svg>PACK</span><span class="epName packName">Full Season '+n+'</span></div>'+rowsHtml(st.packs)+'</div>';
   for(const ep of episodes)fillEpisode(st,ep.episode);
   const btn=view.querySelector('[data-allmissing]');
-  if(btn){btn.disabled=false;btn.textContent='🔍 Find all missing'}
+  if(btn){btn.disabled=false;btn.innerHTML=ico('search')+'Find all missing'}
   if(data.providerError&&!(data.torrents||[]).length){const p=document.createElement('p');p.className='src';p.textContent=data.providerError;view.insertBefore(p,view.children[1])}
 }
 async function findEpisode(st,epNo){
