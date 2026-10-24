@@ -1,0 +1,29 @@
+name = "cinewave"
+main = "worker.js"
+compatibility_date = "2026-10-17"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[vars]
+METADATA_PROVIDER = "itunes"
+TORRENT_PROVIDER = "yts"
+
+CACHE_TTL = "3600"
+TORRENT_CACHE_TTL = "900"
+LATEST_CACHE_TTL = "1800"
+
+RATE_LIMIT_MAX = "30"
+RATE_LIMIT_WINDOW = "60"
+
+# Torrent backup retention: 39 days (seconds)
+TORRENT_BACKUP_TTL = "3369600"
+
+ALLOWED_ORIGINS = ""
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "1df33e9670cf4f469813aa66d8112920"
