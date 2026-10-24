@@ -142,6 +142,12 @@
 <div id="torrentBox"><div class="torrentContent"><button class="close" onclick="closeTorrents()">✕ Close</button><h3 id="torrentTitle">Other Sources</h3><p class="note">Only use sources for content you have permission to download or share.</p><div id="torrentList"></div></div></div>
 <div id="playerBox"><div class="playerContent"><button class="close" onclick="closeMovie()">✕ Close</button><h3 id="playerTitle">CineX Zone Player</h3><div id="trailerWrap" class="videoWrap"><iframe id="trailerFrame" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div><video id="moviePlayer" controls playsinline preload="metadata" style="display:none">Your browser does not support video playback.</video><a id="trailerYt" class="btn download" href="#" target="_blank" rel="noopener noreferrer">If the video does not load, open it on YouTube</a></div></div><footer>© CineX Zone · Movie Discovery, Trailers &amp; Authorized Sources</footer>
 <script>
+// Clean the address bar: drop tracking parameters such as ?utm_source=chatgpt.com
+try{
+  const u=new URL(location.href);let dirty=false;
+  [...u.searchParams.keys()].forEach(k=>{if(/^(utm_[a-z_]+|fbclid|gclid|ref|ref_src)$/i.test(k)){u.searchParams.delete(k);dirty=true}});
+  if(dirty)history.replaceState(null,'',u.pathname+u.search+u.hash);
+}catch(e){}
 const $=id=>document.getElementById(id);
 const ico=(n,c)=>'<svg class="i3d'+(c?' '+c:'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>';
 const grid=$('movieGrid'),statusEl=$('status'),pagEl=$('pagination');
