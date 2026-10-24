@@ -1,4 +1,4 @@
-name = "cinewave"
+name = "cinexzone"
 main = "worker.js"
 compatibility_date = "2026-10-17"
 
@@ -10,19 +10,22 @@ run_worker_first = ["/api/*"]
 
 [vars]
 METADATA_PROVIDER = "itunes"
-TORRENT_PROVIDER = "yts"
+TORRENT_PROVIDER = "knaben"
 
 CACHE_TTL = "3600"
 TORRENT_CACHE_TTL = "900"
 LATEST_CACHE_TTL = "1800"
 
-RATE_LIMIT_MAX = "30"
+# Limits are for the whole site (not per visitor); one season view uses 3-4 requests
+RATE_LIMIT_MAX = "120"
 RATE_LIMIT_WINDOW = "60"
 
 # Torrent backup retention: 39 days (seconds)
 TORRENT_BACKUP_TTL = "3369600"
 
 ALLOWED_ORIGINS = ""
+
+# NOTE: do NOT put TMDB_API_KEY here. Add it in the Cloudflare dashboard as a Secret.
 
 [[kv_namespaces]]
 binding = "CACHE"
