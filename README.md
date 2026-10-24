@@ -1,105 +1,63 @@
-# CineWave
+# CineX Zone
 
-CineWave is a movie discovery website built with HTML, CSS, JavaScript,
-Cloudflare Workers and TMDB.
+Movies & TV series discovery site on Cloudflare Workers.
+Live address: **https://cinexzone.movie.workers.dev**
 
-## Features
+The address is built like this:
 
-- Responsive dark-theme UI
-- TMDB movie search
-- Movie posters, ratings, years and descriptions
-- Genre labels
-- Pagination
-- Provider results modal
-- YTS, Jackett, Prowlarr and disabled-provider options
-- KV response caching
-- Configurable request rate limiting
-- Error handling and request timeouts
-- Cloudflare Workers deployment
+```
+cinexzone  .  movie  .  workers.dev
+   |            |
+   |            +-- account subdomain (Cloudflare dashboard -> Workers & Pages -> Your subdomain -> Change)
+   +-- worker name (name = "cinexzone" in wrangler.toml)
+```
 
-## Project structure
+If `movie` is already taken by someone else, pick another subdomain
+(letters, numbers and `-`, not starting or ending with `-`). The code does not
+need to change, only the address does.
 
-cinewave/
-├── public/
-│   └── index.html
-├── worker.js
-├── adapters.js
-├── wrangler.toml
-└── README.md
+## Files
 
-## Requirements
+```
+worker.js        API (movies, TV seasons, torrents, .torrent files, trailers)
+adapters.js      TMDB / iTunes and torrent providers (Knaben, TPB, torrents-csv, YTS, Jackett, Prowlarr)
+wrangler.toml    Worker name, settings and the KV binding
+public/
+  index.html     The whole website
+```
 
-- Node.js and npm
-- Cloudflare account
-- TMDB API key or TMDB API Read Access Token
+`index.html` MUST stay inside the `public/` folder.
 
-## 1. Install Wrangler
+## Deploy (GitHub -> Cloudflare)
 
-Run these commands inside the project directory:
+1. Keep this repo **Private**. Never commit API keys.
+2. Cloudflare dashboard -> Workers & Pages -> Create -> Import a repository -> pick this repo.
+3. Worker name: `cinexzone` (must be the same as `name` in `wrangler.toml`).
+4. Worker -> Settings -> Variables and secrets -> add:
+   - `TMDB_API_KEY` as **Secret** (needed for TV seasons and the "latest" lists)
+   - optional: `PROWLARR_BASE_URL` (Variable) and `PROWLARR_API_KEY` (Secret)
+5. Open the address and check `/api/health`.
 
-    npm install -D wrangler
-    npx wrangler login
+Every `git push` to the main branch deploys automatically.
 
-## 2. Create the KV namespace
+## Settings
 
-    npx wrangler kv namespace create CACHE
+Set in `wrangler.toml` (`[vars]`) or in the dashboard.
 
-Copy the returned namespace ID into wrangler.toml.
+| Name | Default | What it does |
+|---|---|---|
+| `TORRENT_PROVIDER` | `knaben` | First torrent provider to ask |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW` | `120` / `60` | Requests allowed per window for the whole site |
+| `HOME_MAX_PAGES` | `10` | Pages (30 titles each) of the "latest" list |
+| `HOME_MIN_VOTES` | `5` | Minimum TMDB votes for a title in the latest list (0 = show everything) |
+| `TORRENT_DEADLINE_MS` | `14000` | Longest wait for slow torrent providers |
+| `TORRENT_CACHE_URLS` | built-in list | Public `.torrent` caches, comma separated, `{HASH}` = info-hash |
+| `YTS_MIRRORS` | built-in list | Extra YTS mirrors, comma separated |
+| `ALLOWED_ORIGINS` | empty (any) | Comma separated origins allowed to call the API |
+| `PROWLARR_BASE_URL`, `PROWLARR_API_KEY` | none | Self-hosted Prowlarr (extra results) |
+| `JACKETT_BASE_URL`, `JACKETT_API_KEY` | none | Self-hosted Jackett |
 
-## 3. Add TMDB credentials
+## Notes
 
-For a TMDB API key:
-
-    npx wrangler secret put TMDB_API_KEY
-
-For a TMDB API Read Access Token instead:
-
-    npx wrangler secret put TMDB_API_READ_TOKEN
-
-Paste the credential when Wrangler prompts you.
-
-Never commit credentials to GitHub.
-
-## 4. Run locally
-
-    npx wrangler dev
-
-Open the local URL displayed by Wrangler.
-
-## 5. Deploy
-
-    npx wrangler deploy
-
-Check wrangler.toml before deploying to make sure the Worker name is correct.
-
-## Provider configuration
-
-Set TORRENT_PROVIDER in wrangler.toml to one of:
-
-- yts
-- jackett
-- prowlarr
-- none
-
-For Jackett, configure the JACKETT_URL and JACKETT_API_KEY secrets.
-
-For Prowlarr, configure the PROWLARR_URL and PROWLARR_API_KEY secrets.
-
-Provider endpoints must be reachable from the Cloudflare Worker.
-Private localhost URLs on your phone or computer will not be reachable
-from Cloudflare's servers.
-
-Use third-party providers only for content you are authorized to access
-and follow the relevant provider terms and copyright laws.
-
-## Configuration
-
-CACHE_TTL controls movie-search cache duration in seconds.
-
-TORRENT_CACHE_TTL controls provider-results cache duration in seconds.
-
-RATE_LIMIT_MAX controls the allowed requests per IP during each window.
-
-RATE_LIMIT_WINDOW controls the rate-limit window in seconds.
-
-These settings can be changed in wrangler.toml.
+- Only releases that match the exact title (and year for movies) are shown.
+- Use only content you have permission to download or share.
